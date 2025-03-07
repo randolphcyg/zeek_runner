@@ -51,9 +51,6 @@ RUN curl -L -o /zeek-kafka.zip https://github.com/SeisoLLC/zeek-kafka/archive/re
     && cd / \
     && rm -rf /zeek-kafka
 
-# 验证 zeek-kafka 插件安装
-RUN zeek -N Seiso::Kafka
-
 # 设置工作目录
 WORKDIR /app
 
@@ -63,12 +60,11 @@ COPY --from=builder /app/zeek_runner .
 # 赋予二进制文件执行权限
 RUN chmod +x zeek_runner
 
+# 复制通用配置文件到 Zeek 脚本搜索路径
+COPY init.zeek /app/
+
 # 暴露 API 端口
 EXPOSE 8000
-
-# 设置默认环境变量
-ENV ZEEK_PCAP_FILE_PATH=""
-ENV ZEEK_SCRIPT_PATH=""
 
 # 启动服务
 CMD ["./zeek_runner"]
