@@ -1,5 +1,3 @@
-@load ../notice_only.zeek
-
 # Load a script that detects SSH brute-force attacks
 @load protocols/ssh/detect-bruteforcing
 

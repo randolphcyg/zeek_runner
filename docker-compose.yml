@@ -1,0 +1,14 @@
+services:
+  zeek_runner:
+    image: zeek_runner:1.0
+    container_name: zeek_runner
+    ports:
+      - "8000:8000"
+    volumes:
+      - /opt/nas/pcaps:/opt/nas/pcaps
+      - /opt/nas/logs:/opt/nas/logs
+      - /opt/nas/scripts:/opt/nas/scripts
+      - /Users/randolph/goodjob/zeek_runner/init.zeek:/app/init.zeek
+    command: ./zeek_runner  # 根据你的 Dockerfile 中最终启动服务的命令修改
+    restart: always  # 可选配置，让容器在退出时自动重启
+    detach: true  # 可选配置，以守护进程模式运行容器
