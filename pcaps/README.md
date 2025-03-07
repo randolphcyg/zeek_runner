@@ -1,4 +1,7 @@
-入侵检测 - 使用-Zeek
+# 流量包说明
+
+> 大部分流量包不上传了,省空间，可以去开源网站下载测试。
+> 脚本从一些仓库找到并修改,后续还会修正和更新
 
 Zeek 脚本用于检测各种类型的攻击，包括密码猜测、HTTP Dos、DNS DDos 和 SYN 洪水攻击
 
@@ -30,3 +33,10 @@ zeek -C -r xxx.pcap xxx.zeek
 
 例:
 zeek -Cr pcaps/sshguess.pcap scripts/brtforce.zeek
+
+https://www.malware-traffic-analysis.net/index.html 
+：我们衷心感谢本网站为我们提供必要的 pcap 和知识来检测这些攻击。
+
+注意：
+用于测试 SYN FLOOD 和 HTTP DoS 脚本的 Pcaps 
+可以在这里找到：https://ordo.open.ac.uk/articles/dataset/HTTPDoSDatasetinPCAPformatfor_Wireshark/17206289
