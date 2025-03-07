@@ -1,5 +1,16 @@
 # go + zeek7.1.0 + Seiso/Kafka release 1.2.0 + librdkafka2.8.0 + kafka = zeek_runner
 
+## pcap流量包及zeek脚本说明
+```shell
+大部分流量包不上传了,省空间，可以去开源网站下载测试;
+
+脚本从一些仓库找到并修改,后续还会修正和更新;
+
+init.zeek脚本后续根据服务需要还会修正;
+
+若有高并发需求时,可以通过拓展zeek节点和runner多副本增加并发;
+```
+
 ## 依赖说明
 ```shell
 # 验证 zeek-kafka 插件安装
