@@ -1,93 +1,130 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
 
 const customScriptPath = "/app/init.zeek" // copy到容器中的init.zeek脚本位置
 
+// AnalyzeReq 分析接口请求体
+type AnalyzeReq struct {
+	PCAPFilePath   string `json:"pcap_file_path"`
+	ZeekScriptPath string `json:"zeek_script_path"`
+	OnlyNotice     bool   `json:"only_notice"`
+	UUID           string `json:"uuid"`
+}
+
+// AnalyzeError 自定义错误类型
+type AnalyzeError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *AnalyzeError) Error() string {
+	return e.Message
+}
+
+// 检查文件是否存在
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
+}
+
+// 执行 Zeek 分析
+func runZeekAnalysis(pcapFilePath, zeekScriptPath, customScriptPath string) ([]byte, error) {
+	cmd := exec.Command("zeek", "-Cr", pcapFilePath, customScriptPath, zeekScriptPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return output, &AnalyzeError{
+			StatusCode: http.StatusInternalServerError,
+			Message:    fmt.Sprintf("Zeek analysis failed: %v, output: %s", err, string(output)),
+		}
+	}
+	return output, nil
+}
+
 func main() {
-	// 创建 Gin 路由
 	r := gin.Default()
 
 	// 分析接口
 	r.POST("/analyze", func(c *gin.Context) {
-		pcapFilePath := c.PostForm("pcap_file_path")
-		zeekScriptPath := c.PostForm("zeek_script_path")
-		onlyNotice := c.PostForm("only_notice")
-		uuid := c.PostForm("uuid")
-		slog.Info("Received pcap and script path",
-			"pcap_file_path", pcapFilePath,
-			"zeek_script_path", zeekScriptPath,
-			"only_notice", onlyNotice)
-		if pcapFilePath == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "PCAP file path is required"})
+		var req AnalyzeReq
+		if err := c.BindJSON(&req); err != nil {
+			slog.Warn("解析 JSON 数据失败", "error", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+			return
+		}
+
+		// 验证请求参数
+		if req.PCAPFilePath == "" {
 			slog.Warn("未设置 PCAP file path")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "PCAP file path is required"})
 			return
 		}
-
-		if zeekScriptPath == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Zeek script path is required"})
+		if req.ZeekScriptPath == "" {
 			slog.Warn("未设置 Zeek script path")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Zeek script path is required"})
 			return
 		}
-
-		if onlyNotice == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Only notice flag is required"})
-			slog.Warn("未设置 Only notice flag")
-			return
-		}
-
-		if uuid == "" {
-			c.JSON(400, gin.H{"error": "UUID is required"})
+		if req.UUID == "" {
 			slog.Warn("未设置UUID")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "UUID is required"})
 			return
 		}
 
-		// 设置 zeek 脚本须用的环境变量并调用 zeek 分析 PCAP 文件
-		os.Setenv("PCAP_FILE_PATH", pcapFilePath)
-		os.Setenv("ZEEK_SCRIPT_PATH", zeekScriptPath)
-		os.Setenv("ONLY_NOTICE", onlyNotice)
-		os.Setenv("UUID", uuid)
+		// 设置环境变量
+		os.Setenv("PCAP_FILE_PATH", req.PCAPFilePath)
+		os.Setenv("ZEEK_SCRIPT_PATH", req.ZeekScriptPath)
+		os.Setenv("ONLY_NOTICE", strconv.FormatBool(req.OnlyNotice))
+		os.Setenv("UUID", req.UUID)
 
 		// 检查文件是否存在
-		if _, err := os.Stat(pcapFilePath); os.IsNotExist(err) {
+		if !fileExists(req.PCAPFilePath) {
+			slog.Warn("PCAP file does not exist", "path", req.PCAPFilePath)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "PCAP file path does not exist"})
-			slog.Warn("PCAP file does not exist", "path", pcapFilePath)
 			return
 		}
-
-		if _, err := os.Stat(zeekScriptPath); os.IsNotExist(err) {
+		if !fileExists(req.ZeekScriptPath) {
+			slog.Warn("Zeek script file does not exist", "path", req.ZeekScriptPath)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Zeek script path does not exist"})
-			slog.Warn("Zeek script file does not exist", "path", zeekScriptPath)
 			return
 		}
 
-		cmd := exec.Command("zeek", "-Cr", pcapFilePath, customScriptPath, zeekScriptPath)
-		output, err := cmd.CombinedOutput()
+		// 执行 Zeek 分析
+		output, err := runZeekAnalysis(req.PCAPFilePath, req.ZeekScriptPath, customScriptPath)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":  "Zeek analysis failed",
-				"output": string(output),
-			})
-			slog.Error("Zeek analysis failed", "error", err, "output", string(output))
+			if analyzeErr, ok := err.(*AnalyzeError); ok {
+				slog.Error(analyzeErr.Message)
+				c.JSON(analyzeErr.StatusCode, gin.H{
+					"error":  analyzeErr.Message,
+					"output": string(output),
+				})
+			} else {
+				slog.Error("Zeek analysis failed", "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":  "Zeek analysis failed",
+					"output": string(output),
+				})
+			}
 			return
 		}
 
 		// 返回分析结果
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
-			"uuid":   uuid,
+			"uuid":   req.UUID,
 		})
 		slog.Info("Zeek analysis succeeded",
-			"pcap_file", pcapFilePath,
-			"zeek_script", zeekScriptPath,
-			"uuid", uuid)
+			"pcap_file", req.PCAPFilePath,
+			"zeek_script", req.ZeekScriptPath,
+			"uuid", req.UUID)
 	})
 
 	// zeek版本接口
