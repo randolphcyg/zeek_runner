@@ -40,10 +40,9 @@ docker load -i zeek_runner_1_0.tar.gz
 docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
-  -v /opt/nas/scripts:/opt/nas/scripts \
-  -v /opt/nas/pcaps:/opt/nas/pcaps \
-  -v /opt/nas/logs:/opt/nas/logs \
-  -v /Users/randolph/goodjob/zeek_runner/init.zeek:/app/init.zeek \
+  -v /opt/zeek_runner/scripts:/app/scripts \
+  -v /opt/zeek_runner/pcaps:/app/pcaps \
+  -v /opt/zeek_runner/init.zeek:/app/init.zeek \
   zeek_runner:1.0
 
 # 测试检测恶意行为发送到kafka 仅notice日志
