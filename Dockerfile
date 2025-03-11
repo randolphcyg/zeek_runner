@@ -1,5 +1,5 @@
 # 第一阶段：构建阶段
-FROM golang:1.24.0 AS builder
+FROM golang:1.24.1 AS builder
 
 LABEL stage=gobuilder
 
@@ -40,9 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 下载并解压 zeek-kafka 插件
-RUN curl -L -o /zeek-kafka.zip https://github.com/SeisoLLC/zeek-kafka/archive/refs/tags/v1.2.0.zip \
+RUN curl -L -o /zeek-kafka.zip https://github.com/randolphcyg/zeek-kafka/archive/refs/heads/main.zip \
     && unzip /zeek-kafka.zip -d / \
-    && mv /zeek-kafka-1.2.0 /zeek-kafka \
+    && mv /zeek-kafka-main /zeek-kafka \
     && rm /zeek-kafka.zip \
     && cd /zeek-kafka \
     && ./configure \
