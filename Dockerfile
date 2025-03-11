@@ -51,6 +51,7 @@ RUN curl -L -o /zeek-kafka.zip https://github.com/randolphcyg/zeek-kafka/archive
     && cd / \
     && rm -rf /zeek-kafka
 
+ENV TZ=Asia/Shanghai
 # 设置工作目录
 WORKDIR /app
 
