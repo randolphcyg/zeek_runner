@@ -5,10 +5,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - /opt/nas/pcaps:/opt/nas/pcaps
-      - /opt/nas/logs:/opt/nas/logs
-      - /opt/nas/scripts:/opt/nas/scripts
-      - /Users/randolph/goodjob/zeek_runner/init.zeek:/app/init.zeek
+      - /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps
+      - /opt/zeek_runner/scripts:/opt/zeek_runner/scripts
+      - /opt/zeek_runner/init.zeek:/app/init.zeek
     command: ./zeek_runner  # 根据你的 Dockerfile 中最终启动服务的命令修改
     restart: always  # 可选配置，让容器在退出时自动重启
     detach: true  # 可选配置，以守护进程模式运行容器
+    deploy:
+      replicas: 3  # 设置副本数量为 3
