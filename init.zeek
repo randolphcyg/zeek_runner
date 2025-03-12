@@ -8,7 +8,7 @@ redef Log::default_writer = Log::WRITER_KAFKAWRITER; # 默认日志写入器为 
 redef Kafka::tag_json = T;
 redef Kafka::topic_name = "zeek_log";
 redef Kafka::kafka_conf += {
-    ["metadata.broker.list"] = "10.10.10.208:9092",
+    ["metadata.broker.list"] = "192.168.11.71:9092",
     ["compression.codec"] = "snappy"
 };
 
@@ -18,6 +18,7 @@ global only_notice = getenv("ONLY_NOTICE");
 global script_path = getenv("ZEEK_SCRIPT_PATH");
 global pcap_file_path = getenv("PCAP_FILE_PATH");
 global uuid = getenv("UUID");
+global task_id = getenv("TASK_ID");
 
 # 指定key 二次开发zeek-kafka库才有
 redef Kafka::key_name = pcap_file_path;
@@ -27,6 +28,10 @@ event zeek_init() {
     # uuid
     if (uuid != "") {
         Kafka::headers["uuid"] = uuid;
+    }
+    # task_id
+    if (task_id != "") {
+        Kafka::headers["task_id"] = task_id;
     }
     # PCAP文件路径
     if (pcap_file_path != "") {

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,6 +22,7 @@ type AnalyzeReq struct {
 	ZeekScriptPath string `json:"zeek_script_path"`
 	OnlyNotice     bool   `json:"only_notice"`
 	UUID           string `json:"uuid"`
+	TaskID         string `json:"task_id"`
 }
 
 // AnalyzeError 自定义错误类型
@@ -39,9 +43,19 @@ func fileExists(path string) bool {
 
 // 执行 Zeek 分析
 func runZeekAnalysis(pcapFilePath, zeekScriptPath, customScriptPath string) ([]byte, error) {
-	cmd := exec.Command("zeek", "-Cr", pcapFilePath, customScriptPath, zeekScriptPath)
+	// 设置超时时间，例如设置为 5 分钟
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "zeek", "-Cr", pcapFilePath, customScriptPath, zeekScriptPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return output, &AnalyzeError{
+				StatusCode: http.StatusInternalServerError,
+				Message:    fmt.Sprintf("Zeek analysis timed out after 5 minutes, output: %s", string(output)),
+			}
+		}
 		return output, &AnalyzeError{
 			StatusCode: http.StatusInternalServerError,
 			Message:    fmt.Sprintf("Zeek analysis failed: %v, output: %s", err, string(output)),
@@ -74,8 +88,13 @@ func main() {
 			return
 		}
 		if req.UUID == "" {
-			slog.Warn("未设置UUID")
+			slog.Warn("未设置 UUID")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "UUID is required"})
+			return
+		}
+		if req.TaskID == "" {
+			slog.Warn("未设置 TaskID")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "TaskID is required"})
 			return
 		}
 
@@ -84,6 +103,7 @@ func main() {
 		os.Setenv("ZEEK_SCRIPT_PATH", req.ZeekScriptPath)
 		os.Setenv("ONLY_NOTICE", strconv.FormatBool(req.OnlyNotice))
 		os.Setenv("UUID", req.UUID)
+		os.Setenv("TASK_ID", req.TaskID)
 
 		// 检查文件是否存在
 		if !fileExists(req.PCAPFilePath) {
@@ -118,13 +138,15 @@ func main() {
 
 		// 返回分析结果
 		c.JSON(http.StatusOK, gin.H{
-			"status": "success",
-			"uuid":   req.UUID,
+			"status":  "success",
+			"uuid":    req.UUID,
+			"task_id": req.TaskID,
 		})
 		slog.Info("Zeek analysis succeeded",
 			"pcap_file", req.PCAPFilePath,
 			"zeek_script", req.ZeekScriptPath,
-			"uuid", req.UUID)
+			"uuid", req.UUID,
+			"task_id", req.TaskID)
 	})
 
 	// zeek版本接口
