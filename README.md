@@ -76,27 +76,54 @@ curl http://localhost:8000/check-zeek-kafka
 
 ## 直接使用本机zeek测试
 ```shell
-# bruteforce
+##### 测试 kafka 消息、环境变量取值、二次开发zeek-kafka组件功能是否生效
 # init.zeek是自定义配置的 包含对kafka配置和消息的设置;本地测试时可以不指定，指定了会将消息发送到kafka,本地不生成log文件
 # ONLY_NOTICE=true 环境变量设置为true只发送notice日志 为false发送所有日志(除notice)
 # go程序中 init.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 only_notice三个参数;
-ONLY_NOTICE=true ZEEK_SCRIPT_PATH=/opt/zeek_runner/scripts/brtforce.zeek PCAP_FILE_PATH=/opt/zeek_runner/pcaps/sshguess.pcap zeek -Cr /opt/zeek_runner/pcaps/sshguess.pcap /opt/zeek_runner/init.zeek /opt/zeek_runner/scripts/brtforce.zeek
+ONLY_NOTICE=true ZEEK_SCRIPT_PATH=/xx/xx/scripts/brtforce.zeek \ 
+PCAP_FILE_PATH=/xx/xx/pcaps/sshguess.pcap \
+zeek -Cr ./pcaps/sshguess.pcap ./init.zeek ./scripts/brtforce.zeek
+
+##### 仅本地测试
+
+# bruteforce
+zeek -Cr ./pcaps/sshguess.pcap \
+./test.zeek ./scripts/brtforce.zeek
 
 # dns ddos
-zeek -Cr /opt/zeek_runner/pcaps/amp.dns.RRSIG.fragmented.pcap \
-/opt/zeek_runner/scripts/dns_ddos_script.zeek
+zeek -Cr ./amp.dns.RRSIG.fragmented.pcap \
+./test.zeek \
+./scripts/dns_ddos.zeek
+
+# 异常agent TODO 待测试修改
+zeek -Cr ./pcaps/http_user_agent.pcap \
+./test.zeek \
+./scripts/http_user_agent.zeek
+
+# 异常文件上传
+zeek -Cr ./pcaps/http_file_upload.pcap \
+./test.zeek \
+./scripts/http_file_upload.zeek
 
 # http dos
-zeek -Cr /opt/zeek_runner/pcaps/HTTPDoSNovember2021.pcapng \
-/oopt/zeek_runner/scripts/http_dos.zeek
+zeek -Cr ./pcaps/HTTPDoSNovember2021.pcapng \
+./test.zeek \
+./scripts/http_dos.zeek
 
 # synflood
-zeek -Cr /opt/zeek_runner/pcaps/SYNflood.pcap \
-/opt/zeek_runner/scripts/synflood_detection.zeek
+zeek -Cr ./pcaps/SYNflood.pcap \
+./test.zeek \
+./scripts/synflood_detection.zeek
 
 # rfc_scp
-zeek -Cr /opt/zeek_runner/pcaps/scp.pcapng \
-/opt/zeek_runner/scripts/rfc_scp.zeek
+zeek -Cr ./pcaps/scp.pcapng \
+./test.zeek \
+./scripts/rfc_scp.zeek
+
+# 非法unix命令执行 TODO 待测试修改
+zeek -Cr ./pcaps/unix_command_injection.pcap \
+./test.zeek \
+./scripts/unix_command_injection.zeek
 ```
 
 ## docker-compose部署
