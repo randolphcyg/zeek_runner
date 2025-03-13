@@ -1,8 +1,8 @@
 # Define a module named SYNFLOOD
 module SYNFLOOD;
 
-# Set the SYN_THRESHOLD constant to 50
-const SYN_THRESHOLD: count = 50;
+# Set the SYN_THRESHOLD constant to 150
+const SYN_THRESHOLD: count = 150;
 
 # Add a new enumeration value SYNFlood to the Notice::Type enumeration
 redef enum Notice::Type += {
