@@ -34,7 +34,7 @@ sudo docker build -t zeek_runner:1.0 . --platform linux/amd64
 sudo docker save zeek_runner:1.0  | gzip > zeek_runner_1_0.tar.gz
 # 解压镜像
 docker load -i zeek_runner_1_0.tar.gz
-
+  
 # 运行 一定保证宿主机挂载脚本和pcap文件路径和容器中一致，这样传给zeek脚本的路径可以轻松定位到宿主机文件位置！！！
 docker run -d \
   --name zeek_runner \
@@ -45,9 +45,28 @@ docker run -d \
   zeek_runner:1.0
 
 # 测试检测恶意行为发送到kafka 仅notice日志
-curl -X POST -d "pcap_file_path=/opt/zeek_runner/pcaps/sshguess.pcap&zeek_script_path=/opt/zeek_runner/scripts/brtforce.zeek&only_notice=true&uuid=d3db5f67-c441-56a4-9591-c30c3abab24f&task_id=111" http://localhost:8000/analyze
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pcap_file_path": "/opt/zeek_runner/pcaps/sshguess.pcap",
+    "zeek_script_path": "/opt/zeek_runner/scripts/brtforce.zeek",
+    "only_notice": true,
+    "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
+    "task_id": "111"
+  }' \
+  http://localhost:8000/analyze
+  
 # 所有日志除notice
-curl -X POST -d "pcap_file_path=/opt/zeek_runner/pcaps/sshguess.pcap&zeek_script_path=/opt/zeek_runner/scripts/brtforce.zeek&only_notice=false&uuid=d3db5f67-c441-56a4-9591-c30c3abab24f&task_id=111" http://localhost:8000/analyze
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pcap_file_path": "/opt/zeek_runner/pcaps/sshguess.pcap",
+    "zeek_script_path": "/opt/zeek_runner/scripts/brtforce.zeek",
+    "only_notice": false,
+    "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
+    "task_id": "111"
+  }' \
+  http://localhost:8000/analyze
 # 调用 /version 接口
 curl http://localhost:8000/version
 
