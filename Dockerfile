@@ -40,9 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 下载并解压 zeek-kafka 插件
-RUN curl -L -o /zeek-kafka.tar.gz https://github.com/randolphcyg/zeek-kafka/archive/refs/tags/v2.0.tar.gz \
+RUN curl -L -o /zeek-kafka.tar.gz https://github.com/randolphcyg/zeek-kafka/archive/refs/tags/v2.1.tar.gz \
     && tar -xzf /zeek-kafka.tar.gz -C / \
-    && mv /zeek-kafka-2.0 /zeek-kafka \
+    && mv /zeek-kafka-2.1 /zeek-kafka \
     && rm /zeek-kafka.tar.gz \
     && cd /zeek-kafka \
     && ./configure \

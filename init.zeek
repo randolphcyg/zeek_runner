@@ -1,68 +1,89 @@
 @load Seiso/Kafka  # 用于将 JSON 日志发送到 Kafka
 
-redef LogAscii::use_json = T;
-redef LogAscii::json_timestamps = JSON::TS_ISO8601;
-redef Log::default_writer = Log::WRITER_KAFKAWRITER; # 默认日志写入器为 KafkaWriter
-
-# 配置 Kafka 相关信息
-redef Kafka::tag_json = T;
-redef Kafka::topic_name = "zeek_log";
+# 全局Kafka配置
+redef Kafka::topic_name = "zeek_logs";  # 全局默认topic
 redef Kafka::kafka_conf += {
-    ["metadata.broker.list"] = "192.168.11.71:9092",
-    ["compression.codec"] = "snappy"
+    ["metadata.broker.list"] = "10.10.10.218:9092",
+    ["compression.codec"] = "snappy",
+    ["batch.num.messages"] = "10000"  # 提高批处理效率
 };
+redef Kafka::json_timestamps = JSON::TS_ISO8601;
 
-# 获取环境变量 ONLY_NOTICE 的值
-global only_notice = getenv("ONLY_NOTICE");
-# 脚本路径和 PCAP 文件路径
-global script_path = getenv("ZEEK_SCRIPT_PATH");
-global pcap_file_path = getenv("PCAP_FILE_PATH");
-global uuid = getenv("UUID");
-global task_id = getenv("TASK_ID");
+# 环境变量
+global only_notice = getenv("ONLY_NOTICE");  # 是否只可能生成notice日志
+global task_id = getenv("TASK_ID");  # TASK_ID
+global uuid = getenv("UUID");  # UUID
+global script_path = getenv("ZEEK_SCRIPT_PATH");  # 脚本路径
+global pcap_file_path = getenv("PCAP_FILE_PATH");  # PCAP 文件路径
 
 # 指定key 二次开发zeek-kafka库才有
 redef Kafka::key_name = pcap_file_path;
 
+# 自定义任务完成日志
+export {
+    module TaskStatus;
+    redef enum Log::ID += { LOG };
+
+    type Info: record {
+        completed_time: string &log;
+    };
+}
+
 # 初始化方法
 event zeek_init() {
-    # uuid
-    if (uuid != "") {
-        Kafka::headers["uuid"] = uuid;
-    }
-    # task_id
-    if (task_id != "") {
-        Kafka::headers["task_id"] = task_id;
-    }
-    # PCAP文件路径
-    if (pcap_file_path != "") {
-        Kafka::headers["pcap_file_path"] = pcap_file_path;
-    }
-    # 脚本路径
-    if (script_path != "") {
-        Kafka::headers["script_path"] = script_path;
+    # 自定义日志 任务状态
+    Log::create_stream(TaskStatus::LOG, [$columns=TaskStatus::Info, $path="task_status"]);
+
+    # 设置固定headers
+    Kafka::headers["task_id"] = task_id;
+    Kafka::headers["uuid"] = uuid;
+    Kafka::headers["pcap_file_path"] = pcap_file_path;
+    Kafka::headers["script_path"] = script_path;
+
+    # 不同日志流发到不同topic
+    for (stream_id in Log::active_streams) {
+        # 移除默认的文件过滤器 关键：避免本地文件
+        Log::remove_filter(stream_id, "default");
+
+        local stream_name = Log::active_streams[stream_id]$path;
+        local filter_config: Log::Filter;
+
+        # 配置不同日志流的 Kafka 过滤器
+        if (stream_id == Notice::LOG) {
+            filter_config = [
+                $name = "kafka-notice",
+                $writer = Log::WRITER_KAFKAWRITER,
+                $config = table(["topic_name"] = "zeek_notice")
+            ];
+        } else if (stream_id == TaskStatus::LOG) {
+            filter_config = [
+                $name = "kafka-task-status",
+                $writer = Log::WRITER_KAFKAWRITER,
+                $config = table(["topic_name"] = "zeek_task_status")
+            ];
+        } else {  # 其他所有日志
+            filter_config = [
+                $name = "kafka-default",
+                $writer = Log::WRITER_KAFKAWRITER,
+                $config = table(["topic_name"] = Kafka::topic_name)
+            ];
+        }
+        Log::add_filter(stream_id, filter_config);
     }
 
-    # 根据环境变量的值决定加载哪个基础脚本
+    # 是否只输出 notice、TaskStatus 日志
     if (only_notice == "true") {
-        print fmt("##### output: only notice log");
-
-        # 创建一个列表来存储需要禁用的日志流
         local streams_to_disable: set[Log::ID] = set();
-        # 遍历所有活动的日志流 将非 notice 日志流添加到禁用列表中
-        for (stream_id in Log::active_streams) {
-            # 检查是否为 notice 日志流
-            if (stream_id != Notice::LOG) {
-                add streams_to_disable[stream_id];
+        for (id in Log::active_streams) {
+            if (id != Notice::LOG && id != TaskStatus::LOG) {
+                add streams_to_disable[id];
             }
         }
 
-        # 禁用在列表中的日志流
-        for (stream_id in streams_to_disable) {
-            print fmt("Disabling stream: %s", stream_id);
-            Log::disable_stream(stream_id);
+        for (id in streams_to_disable) {
+            Log::disable_stream(id);
         }
     } else {
-        print fmt("##### output: full logs");
         Log::disable_stream(Notice::LOG);
     }
 }
@@ -70,4 +91,13 @@ event zeek_init() {
 # 设置通知策略
 hook Notice::policy(n: Notice::Info) {
     add n$actions[Notice::ACTION_LOG];
+}
+
+# 任务完成事件
+event zeek_done() {
+    local formatted_time = strftime("%Y-%m-%dT%H:%M:%S+08:00", current_time());
+    local log_info = TaskStatus::Info(
+        $completed_time = formatted_time
+    );
+    Log::write(TaskStatus::LOG, log_info);
 }
