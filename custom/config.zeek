@@ -3,7 +3,7 @@
 # 全局Kafka配置
 redef Kafka::topic_name = "zeek_logs";  # 全局默认topic
 redef Kafka::kafka_conf += {
-    ["metadata.broker.list"] = "10.10.10.218:9092",
+    ["metadata.broker.list"] = getenv("KAFKA_BROKERS"),
     ["compression.codec"] = "snappy",
     ["batch.num.messages"] = "10000"  # 提高批处理效率
 };

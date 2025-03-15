@@ -6,8 +6,6 @@
 
 脚本从一些仓库找到并修改,后续还会修正和更新;
 
-init.zeek脚本后续根据服务需要还会修正;
-
 若有高并发需求时,可以通过拓展zeek节点和runner多副本增加并发;
 ```
 
@@ -34,14 +32,16 @@ sudo docker build -t zeek_runner:1.0 . --platform linux/amd64
 sudo docker save zeek_runner:1.0  | gzip > zeek_runner_1_0.tar.gz
 # 解压镜像
 docker load -i zeek_runner_1_0.tar.gz
-  
-# 运行 一定保证宿主机挂载脚本和pcap文件路径和容器中一致，这样传给zeek脚本的路径可以轻松定位到宿主机文件位置！！！
+
+# 运行前需要修改docker命令中的kafka连接配置
+# 一定保证宿主机挂载脚本和pcap文件路径和容器中一致，这样传给zeek脚本的路径可以轻松定位到宿主机文件位置！！！
 docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
+  -e KAFKA_BROKERS="10.10.10.218:9092" \
   -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
   -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/init.zeek:/app/init.zeek \
+  -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
   zeek_runner:1.0
 
 # 测试检测恶意行为发送到kafka 仅notice日志
@@ -52,9 +52,9 @@ curl -X POST \
     "zeek_script_path": "/opt/zeek_runner/scripts/brtforce.zeek",
     "only_notice": true,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
-    "task_id": "111"
+    "task_id": "2333"
   }' \
-  http://localhost:8000/analyze
+  http://localhost:8000/api/v1/analyze
   
 # 所有日志除notice
 curl -X POST \
@@ -64,25 +64,25 @@ curl -X POST \
     "zeek_script_path": "/opt/zeek_runner/scripts/brtforce.zeek",
     "only_notice": false,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
-    "task_id": "111"
+    "task_id": "1212"
   }' \
-  http://localhost:8000/analyze
-# 调用 /version 接口
-curl http://localhost:8000/version
+  http://localhost:8000/api/v1/analyze
+# 调用 /api/v1/version/zeek 接口
+curl http://localhost:8000/api/v1/version/zeek
 
-# 调用 /check-zeek-kafka 接口
-curl http://localhost:8000/check-zeek-kafka
+# 调用 /api/v1/version/zeek-kafka 接口
+curl http://localhost:8000/api/v1/version/zeek-kafka
 ```
 
 ## 直接使用本机zeek测试
 ```shell
 ##### 测试 kafka 消息、环境变量取值、二次开发zeek-kafka组件功能是否生效
-# init.zeek是自定义配置的 包含对kafka配置和消息的设置;本地测试时可以不指定，指定了会将消息发送到kafka,本地不生成log文件
+# config.zeek是自定义配置的 包含对kafka配置和消息的设置;本地测试时可以不指定，指定了会将消息发送到kafka,本地不生成log文件
 # ONLY_NOTICE=true 环境变量设置为true只发送notice日志 为false发送所有日志(除notice)
-# go程序中 init.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 only_notice三个参数;
+# go程序中 config.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 only_notice三个参数;
 ONLY_NOTICE=true ZEEK_SCRIPT_PATH=/xx/xx/scripts/brtforce.zeek \ 
 PCAP_FILE_PATH=/xx/xx/pcaps/sshguess.pcap \
-zeek -Cr ./pcaps/sshguess.pcap ./init.zeek ./scripts/brtforce.zeek
+zeek -Cr ./pcaps/sshguess.pcap ./config.zeek ./scripts/brtforce.zeek
 
 ##### 仅本地测试
 

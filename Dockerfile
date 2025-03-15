@@ -61,8 +61,11 @@ COPY --from=builder /app/zeek_runner .
 # 赋予二进制文件执行权限
 RUN chmod +x zeek_runner
 
-# 复制通用配置文件到 Zeek 脚本搜索路径
-COPY init.zeek /app/
+# 加载自定义通用配置文件
+RUN mkdir -p /usr/local/zeek/share/zeek/base/custom
+COPY ./custom/config.zeek /usr/local/zeek/share/zeek/base/custom
+COPY ./custom/__load__.zeek /usr/local/zeek/share/zeek/base/custom
+RUN echo "@load base/custom" >> /usr/local/zeek/share/zeek/base/init-default.zeek
 
 # 暴露 API 端口
 EXPOSE 8000

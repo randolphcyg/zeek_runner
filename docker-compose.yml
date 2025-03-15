@@ -1,15 +1,17 @@
+version: '3.8'
+
 services:
   zeek_runner:
     image: zeek_runner:1.0
     container_name: zeek_runner
     ports:
       - "8000:8000"
+    environment:
+      - KAFKA_BROKERS=10.10.10.218:9092
     volumes:
       - /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps
       - /opt/zeek_runner/scripts:/opt/zeek_runner/scripts
-      - /opt/zeek_runner/init.zeek:/app/init.zeek
-    command: ./zeek_runner  # 根据你的 Dockerfile 中最终启动服务的命令修改
-    restart: always  # 可选配置，让容器在退出时自动重启
-    detach: true  # 可选配置，以守护进程模式运行容器
+      - /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
+    restart: always
     deploy:
-      replicas: 3  # 设置副本数量为 3
+      replicas: 3
