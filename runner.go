@@ -88,11 +88,11 @@ func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 func handleZeekAnalysis(c *gin.Context) {
 	var req AnalyzeReq
 	if err := c.BindJSON(&req); err != nil {
-		HandleError(c, http.StatusBadRequest, "invalid param", err)
+		HandleError(c, http.StatusBadRequest, "invalid param:"+err.Error(), err)
 		return
 	}
 	if err := validateAnalyzeReq(req); err != nil {
-		HandleError(c, http.StatusBadRequest, "invalid request", err)
+		HandleError(c, http.StatusBadRequest, "invalid request:"+err.Error(), err)
 		return
 	}
 
@@ -110,6 +110,13 @@ func handleZeekAnalysis(c *gin.Context) {
 		ZeekScriptPath: req.ZeekScriptPath,
 		StartTime:      time.Now().Format(time.RFC3339),
 	}
+	slog.Info("Zeek analysis succeeded",
+		"pcap_file", req.PCAPFilePath,
+		"zeek_script", req.ZeekScriptPath,
+		"uuid", req.UUID,
+		"task_id", req.TaskID,
+		"StartTime", time.Now().Format(time.RFC3339),
+	)
 	Success(c, resp)
 }
 
@@ -222,7 +229,7 @@ func HandleError(ctx *gin.Context, code int, message string, err error) {
 	}
 	ctx.JSON(200, gin.H{
 		"code": code,
-		"msg":  err,
+		"msg":  message,
 	})
 }
 
