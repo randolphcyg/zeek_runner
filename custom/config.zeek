@@ -61,6 +61,12 @@ event zeek_init() {
                 $writer = Log::WRITER_KAFKAWRITER,
                 $config = table(["topic_name"] = "zeek_task_status")
             ];
+        } else if (stream_id == Files::LOG) {
+            filter_config = [
+                $name = "kafka-files",
+                $writer = Log::WRITER_KAFKAWRITER,
+                $config = table(["topic_name"] = "zeek_extract_files")
+            ];
         } else {  # 其他所有日志
             filter_config = [
                 $name = "kafka-default",

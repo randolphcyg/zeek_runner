@@ -17,11 +17,13 @@ import (
 
 // AnalyzeReq 分析接口请求体
 type AnalyzeReq struct {
-	OnlyNotice     bool   `json:"only_notice"` // 区分是否只生成notice日志
-	TaskID         string `json:"task_id"`
-	UUID           string `json:"uuid"`
-	PCAPFilePath   string `json:"pcap_file_path"`
-	ZeekScriptPath string `json:"zeek_script_path"`
+	ExtractedFilePath    string `json:"extracted_file_path"`     // 提取文件存储路径 若存在则证明文件提取模式 >> 不要 only_notice 给true
+	ExtractedFileMinSize int    `json:"extracted_file_min_size"` //提取文件最小大小(KB)
+	OnlyNotice           bool   `json:"only_notice"`             // 区分是否只生成notice日志
+	TaskID               string `json:"task_id"`
+	UUID                 string `json:"uuid"`
+	PCAPFilePath         string `json:"pcap_file_path"`
+	ZeekScriptPath       string `json:"zeek_script_path"`
 }
 
 // AnalyzeResp 分析接口响应体
@@ -34,6 +36,13 @@ type AnalyzeResp struct {
 }
 
 func validateAnalyzeReq(req AnalyzeReq) error {
+	if req.ExtractedFilePath != "" {
+		if req.ExtractedFileMinSize <= 0 {
+			req.ExtractedFileMinSize = 1 // 默认1KB
+		}
+		slog.Info("文件提取模式", "提取文件存储路径", req.ExtractedFilePath,
+			"提取文件最小限制", req.ExtractedFileMinSize)
+	}
 	if req.PCAPFilePath == "" {
 		return errors.New("PCAP file path is required")
 	}
@@ -68,6 +77,8 @@ func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 
 	// 设置独立环境变量
 	cmd.Env = append(os.Environ(),
+		"EXTRACTED_FILE_PATH="+req.ExtractedFilePath,
+		"EXTRACTED_FILE_MIN_SIZE="+strconv.Itoa(req.ExtractedFileMinSize),
 		"PCAP_FILE_PATH="+req.PCAPFilePath,
 		"ZEEK_SCRIPT_PATH="+req.ZeekScriptPath,
 		"ONLY_NOTICE="+strconv.FormatBool(req.OnlyNotice),
