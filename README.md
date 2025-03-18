@@ -41,6 +41,7 @@ docker run -d \
   -e KAFKA_BROKERS="10.10.10.218:9092" \
   -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
   -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /path/for/save/extracted/files:/path/for/save/extracted/files \
   -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
   zeek_runner:1.0
 
@@ -124,6 +125,30 @@ zeek -Cr ./pcaps/scp.pcapng \
 zeek -Cr ./pcaps/unix_command_injection.pcap \
 ./test.zeek \
 ./scripts/unix_command_injection.zeek
+
+
+## 提取文件模式测试
+EXTRACTED_FILE_PATH=/path/for/save/extracted/files \
+EXTRACTED_FILE_MIN_SIZE=20 \
+zeek -Cr ./file_extract_scripts/xxx.pcap \
+./extract_http.zeek
+
+EXTRACTED_FILE_PATH=/path/for/save/extracted/files \
+EXTRACTED_FILE_MIN_SIZE=20 \
+zeek -Cr ./xxx.pcap \
+./extract_http.zeek
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+    "extracted_file_path": "/path/for/save/extracted/files",
+    "extracted_file_min_size": 20,
+    "pcap_file_path": "/opt/zeek_runner/file_extract_scripts/xxx.pcap",
+    "zeek_script_path": "/opt/zeek_runner/file_extract_scripts/extract_http.zeek",
+    "uuid": "233",
+    "task_id": "122"
+  }' \
+  http://localhost:8000/api/v1/analyze
 ```
 
 ## docker-compose部署
