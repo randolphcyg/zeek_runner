@@ -17,22 +17,24 @@ import (
 
 // AnalyzeReq 分析接口请求体
 type AnalyzeReq struct {
-	ExtractedFilePath    string `json:"extracted_file_path"`     // 提取文件存储路径 若存在则证明文件提取模式 >> 不要 only_notice 给true
-	ExtractedFileMinSize int    `json:"extracted_file_min_size"` //提取文件最小大小(KB)
-	OnlyNotice           bool   `json:"only_notice"`             // 区分是否只生成notice日志
 	TaskID               string `json:"task_id"`
 	UUID                 string `json:"uuid"`
-	PCAPFilePath         string `json:"pcap_file_path"`
-	ZeekScriptPath       string `json:"zeek_script_path"`
+	OnlyNotice           bool   `json:"only_notice"`             // 区分是否只生成notice日志
+	PcapFileID           string `json:"pcap_file_id"`            // pcap文件ID
+	PcapFilePath         string `json:"pcap_file_path"`          // pcap文件路径
+	ScriptID             string `json:"script_id"`               // 脚本ID
+	ScriptPath           string `json:"script_path"`             // 脚本路径
+	ExtractedFilePath    string `json:"extracted_file_path"`     // 提取文件存储路径 若存在则证明文件提取模式 >> 不要 only_notice 给true
+	ExtractedFileMinSize int    `json:"extracted_file_min_size"` // 提取文件最小大小(KB)
 }
 
 // AnalyzeResp 分析接口响应体
 type AnalyzeResp struct {
-	TaskID         string `json:"task_id"`
-	UUID           string `json:"uuid"`
-	PCAPFilePath   string `json:"pcap_file_path"`
-	ZeekScriptPath string `json:"zeek_script_path"`
-	StartTime      string `json:"start_time"` // 任务开始时间
+	TaskID       string `json:"task_id"`
+	UUID         string `json:"uuid"`
+	PcapFilePath string `json:"pcap_file_path"`
+	ScriptPath   string `json:"script_path"`
+	StartTime    string `json:"start_time"` // 任务开始时间
 }
 
 func validateAnalyzeReq(req AnalyzeReq) error {
@@ -43,22 +45,23 @@ func validateAnalyzeReq(req AnalyzeReq) error {
 		slog.Info("文件提取模式", "提取文件存储路径", req.ExtractedFilePath,
 			"提取文件最小限制", req.ExtractedFileMinSize)
 	}
-	if req.PCAPFilePath == "" {
-		return errors.New("PCAP file path is required")
-	}
-	if req.ZeekScriptPath == "" {
-		return errors.New("zeek script path is required")
+	if req.TaskID == "" {
+		return errors.New("TaskID is required")
 	}
 	if req.UUID == "" {
 		return errors.New("UUID is required")
 	}
-	if req.TaskID == "" {
-		return errors.New("TaskID is required")
+
+	if req.PcapFilePath == "" {
+		return errors.New("PCAP file path is required")
 	}
-	if !isFileExist(req.PCAPFilePath) {
+	if !isFileExist(req.PcapFilePath) {
 		return errors.New("PCAP file does not exist")
 	}
-	if !isFileExist(req.ZeekScriptPath) {
+	if req.ScriptPath == "" {
+		return errors.New("zeek script path is required")
+	}
+	if !isFileExist(req.ScriptPath) {
 		return errors.New("zeek script file does not exist")
 	}
 	return nil
@@ -73,18 +76,39 @@ func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PCAPFilePath, req.ZeekScriptPath)
+	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapFilePath, req.ScriptPath)
 
 	// 设置独立环境变量
-	cmd.Env = append(os.Environ(),
-		"EXTRACTED_FILE_PATH="+req.ExtractedFilePath,
-		"EXTRACTED_FILE_MIN_SIZE="+strconv.Itoa(req.ExtractedFileMinSize),
-		"PCAP_FILE_PATH="+req.PCAPFilePath,
-		"ZEEK_SCRIPT_PATH="+req.ZeekScriptPath,
-		"ONLY_NOTICE="+strconv.FormatBool(req.OnlyNotice),
-		"UUID="+req.UUID,
-		"TASK_ID="+req.TaskID,
-	)
+	env := os.Environ()
+	if req.TaskID != "" {
+		env = append(env, "TASK_ID="+req.TaskID)
+	}
+	if req.UUID != "" {
+		env = append(env, "UUID="+req.UUID)
+	}
+	if req.OnlyNotice {
+		env = append(env, "ONLY_NOTICE="+strconv.FormatBool(req.OnlyNotice))
+	}
+	if req.PcapFileID != "" {
+		env = append(env, "PCAP_FILE_ID="+req.PcapFileID)
+	}
+	if req.PcapFilePath != "" {
+		env = append(env, "PCAP_FILE_PATH="+req.PcapFilePath)
+	}
+	if req.ScriptID != "" {
+		env = append(env, "SCRIPT_ID="+req.ScriptID)
+	}
+	if req.ScriptPath != "" {
+		env = append(env, "SCRIPT_PATH="+req.ScriptPath)
+	}
+	if req.ExtractedFilePath != "" {
+		env = append(env, "EXTRACTED_FILE_PATH="+req.ExtractedFilePath)
+	}
+	if req.ExtractedFileMinSize > 0 {
+		env = append(env, "EXTRACTED_FILE_MIN_SIZE="+strconv.Itoa(req.ExtractedFileMinSize))
+	}
+
+	cmd.Env = env
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -115,17 +139,17 @@ func handleZeekAnalysis(c *gin.Context) {
 
 	var resp AnalyzeResp
 	resp = AnalyzeResp{
-		TaskID:         req.TaskID,
-		UUID:           req.UUID,
-		PCAPFilePath:   req.PCAPFilePath,
-		ZeekScriptPath: req.ZeekScriptPath,
-		StartTime:      time.Now().Format(time.RFC3339),
+		TaskID:       req.TaskID,
+		UUID:         req.UUID,
+		PcapFilePath: req.PcapFilePath,
+		ScriptPath:   req.ScriptPath,
+		StartTime:    time.Now().Format(time.RFC3339),
 	}
 	slog.Info("Zeek analysis succeeded",
-		"pcap_file", req.PCAPFilePath,
-		"zeek_script", req.ZeekScriptPath,
-		"uuid", req.UUID,
 		"task_id", req.TaskID,
+		"uuid", req.UUID,
+		"pcap_file", req.PcapFilePath,
+		"script", req.ScriptPath,
 		"StartTime", time.Now().Format(time.RFC3339),
 	)
 	Success(c, resp)
