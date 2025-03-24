@@ -10,11 +10,13 @@ redef Kafka::kafka_conf += {
 redef Kafka::json_timestamps = JSON::TS_ISO8601;
 
 # 环境变量
-global only_notice = getenv("ONLY_NOTICE");  # 是否只可能生成notice日志
 global task_id = getenv("TASK_ID");  # TASK_ID
 global uuid = getenv("UUID");  # UUID
-global script_path = getenv("ZEEK_SCRIPT_PATH");  # 脚本路径
+global only_notice = getenv("ONLY_NOTICE");  # 是否只可能生成notice日志 区分检测与验证
+global pcap_file_id = getenv("PCAP_FILE_ID");  # PCAP 文件ID
 global pcap_file_path = getenv("PCAP_FILE_PATH");  # PCAP 文件路径
+global zeek_script_id = getenv("SCRIPT_ID");  # 脚本ID 不能命名为script_id 与内部变量重复
+global script_path = getenv("SCRIPT_PATH");  # 脚本路径
 
 # 指定key 二次开发zeek-kafka库才有
 redef Kafka::key_name = pcap_file_path;
@@ -34,11 +36,25 @@ event zeek_init() {
     # 自定义日志 任务状态
     Log::create_stream(TaskStatus::LOG, [$columns=TaskStatus::Info, $path="task_status"]);
 
-    # 设置固定headers
-    Kafka::headers["task_id"] = task_id;
-    Kafka::headers["uuid"] = uuid;
-    Kafka::headers["pcap_file_path"] = pcap_file_path;
-    Kafka::headers["script_path"] = script_path;
+    # 设置headers
+    if (task_id != "") {
+        Kafka::headers["task_id"] = task_id;
+    }
+    if (uuid != "") {
+        Kafka::headers["uuid"] = uuid;
+    }
+    if (pcap_file_id != "") {
+        Kafka::headers["pcap_file_id"] = pcap_file_id;
+    }
+    if (pcap_file_path != "") {
+        Kafka::headers["pcap_file_path"] = pcap_file_path;
+    }
+    if (zeek_script_id != "") {
+        Kafka::headers["script_id"] = zeek_script_id;
+    }
+    if (script_path != "") {
+        Kafka::headers["script_path"] = script_path;
+    }
 
     # 不同日志流发到不同topic
     for (stream_id in Log::active_streams) {
