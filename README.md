@@ -23,7 +23,8 @@ https://github.com/randolphcyg/zeek-kafka/
 ## docker部署
 ```shell
 # 基础镜像
-docker pull golang:1.24.1 --platform linux/amd64
+docker pull golang:1.24.2 --platform linux/amd64
+docker tag golang:1.24.2 golang:1.24-u22
 docker pull zeek/zeek:7.1.0 --platform linux/amd64
 
 # 构建
