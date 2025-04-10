@@ -10,16 +10,16 @@ redef Kafka::kafka_conf += {
 redef Kafka::json_timestamps = JSON::TS_ISO8601;
 
 # 环境变量
-global task_id = getenv("TASK_ID");  # TASK_ID
+global taskID = getenv("TASK_ID");  # TASK_ID
 global uuid = getenv("UUID");  # UUID
-global only_notice = getenv("ONLY_NOTICE");  # 是否只可能生成notice日志 区分检测与验证
-global pcap_file_id = getenv("PCAP_FILE_ID");  # PCAP 文件ID
-global pcap_file_path = getenv("PCAP_FILE_PATH");  # PCAP 文件路径
-global zeek_script_id = getenv("SCRIPT_ID");  # 脚本ID 不能命名为script_id 与内部变量重复
-global script_path = getenv("SCRIPT_PATH");  # 脚本路径
+global onlyNotice = getenv("ONLY_NOTICE");  # 是否只可能生成notice日志 区分检测与验证
+global pcapID = getenv("PCAP_ID");  # PCAP 文件ID
+global pcapPath = getenv("PCAP_PATH");  # PCAP 文件路径
+global scriptID = getenv("SCRIPT_ID");  # 脚本ID 不能命名为script_id 与内部变量重复
+global scriptPath = getenv("SCRIPT_PATH");  # 脚本路径
 
 # 指定key 二次开发zeek-kafka库才有
-redef Kafka::key_name = pcap_file_path;
+redef Kafka::key_name = pcapPath;
 
 # 自定义任务完成日志
 export {
@@ -27,7 +27,7 @@ export {
     redef enum Log::ID += { LOG };
 
     type Info: record {
-        completed_time: string &log;
+        completedTime: string &log;
     };
 }
 
@@ -37,23 +37,23 @@ event zeek_init() {
     Log::create_stream(TaskStatus::LOG, [$columns=TaskStatus::Info, $path="task_status"]);
 
     # 设置headers
-    if (task_id != "") {
-        Kafka::headers["task_id"] = task_id;
+    if (taskID != "") {
+        Kafka::headers["taskID"] = taskID;
     }
     if (uuid != "") {
         Kafka::headers["uuid"] = uuid;
     }
-    if (pcap_file_id != "") {
-        Kafka::headers["pcap_file_id"] = pcap_file_id;
+    if (pcapID != "") {
+        Kafka::headers["pcapID"] = pcapID;
     }
-    if (pcap_file_path != "") {
-        Kafka::headers["pcap_file_path"] = pcap_file_path;
+    if (pcapPath != "") {
+        Kafka::headers["pcapPath"] = pcapPath;
     }
-    if (zeek_script_id != "") {
-        Kafka::headers["script_id"] = zeek_script_id;
+    if (scriptID != "") {
+        Kafka::headers["scriptID"] = scriptID;
     }
-    if (script_path != "") {
-        Kafka::headers["script_path"] = script_path;
+    if (scriptPath != "") {
+        Kafka::headers["scriptPath"] = scriptPath;
     }
 
     # 不同日志流发到不同topic
@@ -94,7 +94,7 @@ event zeek_init() {
     }
 
     # 是否只输出 notice、TaskStatus 日志
-    if (only_notice == "true") {
+    if (onlyNotice == "true") {
         local streams_to_disable: set[Log::ID] = set();
         for (id in Log::active_streams) {
             if (id != Notice::LOG && id != TaskStatus::LOG) {
@@ -119,7 +119,7 @@ hook Notice::policy(n: Notice::Info) {
 event zeek_done() {
     local formatted_time = strftime("%Y-%m-%dT%H:%M:%S+08:00", current_time());
     local log_info = TaskStatus::Info(
-        $completed_time = formatted_time
+        $completedTime = formatted_time
     );
     Log::write(TaskStatus::LOG, log_info);
 }

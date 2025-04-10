@@ -17,24 +17,24 @@ import (
 
 // AnalyzeReq 分析接口请求体
 type AnalyzeReq struct {
-	TaskID               string `json:"task_id"`
+	TaskID               string `json:"taskID"`
 	UUID                 string `json:"uuid"`
-	OnlyNotice           bool   `json:"only_notice"`             // 区分是否只生成notice日志
-	PcapFileID           string `json:"pcap_file_id"`            // pcap文件ID
-	PcapFilePath         string `json:"pcap_file_path"`          // pcap文件路径
-	ScriptID             string `json:"script_id"`               // 脚本ID
-	ScriptPath           string `json:"script_path"`             // 脚本路径
-	ExtractedFilePath    string `json:"extracted_file_path"`     // 提取文件存储路径 若存在则证明文件提取模式 >> 不要 only_notice 给true
-	ExtractedFileMinSize int    `json:"extracted_file_min_size"` // 提取文件最小大小(KB)
+	OnlyNotice           bool   `json:"onlyNotice"`           // 区分是否只生成notice日志
+	PcapID               string `json:"pcapID"`               // pcap文件ID
+	PcapPath             string `json:"pcapPath"`             // pcap文件路径
+	ScriptID             string `json:"scriptID"`             // 脚本ID
+	ScriptPath           string `json:"scriptPath"`           // 脚本路径
+	ExtractedFilePath    string `json:"extractedFilePath"`    // 提取文件存储路径 若存在则证明文件提取模式 >> 不要 onlyNotice 给true
+	ExtractedFileMinSize int    `json:"extractedFileMinSize"` // 提取文件最小大小(KB)
 }
 
 // AnalyzeResp 分析接口响应体
 type AnalyzeResp struct {
-	TaskID       string `json:"task_id"`
-	UUID         string `json:"uuid"`
-	PcapFilePath string `json:"pcap_file_path"`
-	ScriptPath   string `json:"script_path"`
-	StartTime    string `json:"start_time"` // 任务开始时间
+	TaskID     string `json:"taskID"`
+	UUID       string `json:"uuid"`
+	PcapPath   string `json:"pcapPath"`
+	ScriptPath string `json:"scriptPath"`
+	StartTime  string `json:"startTime"` // 任务开始时间
 }
 
 func validateAnalyzeReq(req AnalyzeReq) error {
@@ -52,10 +52,10 @@ func validateAnalyzeReq(req AnalyzeReq) error {
 		return errors.New("UUID is required")
 	}
 
-	if req.PcapFilePath == "" {
+	if req.PcapPath == "" {
 		return errors.New("PCAP file path is required")
 	}
-	if !isFileExist(req.PcapFilePath) {
+	if !isFileExist(req.PcapPath) {
 		return errors.New("PCAP file does not exist")
 	}
 	if req.ScriptPath == "" {
@@ -76,7 +76,7 @@ func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapFilePath, req.ScriptPath)
+	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath)
 
 	// 设置独立环境变量
 	env := os.Environ()
@@ -89,11 +89,11 @@ func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 	if req.OnlyNotice {
 		env = append(env, "ONLY_NOTICE="+strconv.FormatBool(req.OnlyNotice))
 	}
-	if req.PcapFileID != "" {
-		env = append(env, "PCAP_FILE_ID="+req.PcapFileID)
+	if req.PcapID != "" {
+		env = append(env, "PCAP_ID="+req.PcapID)
 	}
-	if req.PcapFilePath != "" {
-		env = append(env, "PCAP_FILE_PATH="+req.PcapFilePath)
+	if req.PcapPath != "" {
+		env = append(env, "PCAP_PATH="+req.PcapPath)
 	}
 	if req.ScriptID != "" {
 		env = append(env, "SCRIPT_ID="+req.ScriptID)
@@ -139,16 +139,16 @@ func handleZeekAnalysis(c *gin.Context) {
 
 	var resp AnalyzeResp
 	resp = AnalyzeResp{
-		TaskID:       req.TaskID,
-		UUID:         req.UUID,
-		PcapFilePath: req.PcapFilePath,
-		ScriptPath:   req.ScriptPath,
-		StartTime:    time.Now().Format(time.RFC3339),
+		TaskID:     req.TaskID,
+		UUID:       req.UUID,
+		PcapPath:   req.PcapPath,
+		ScriptPath: req.ScriptPath,
+		StartTime:  time.Now().Format(time.RFC3339),
 	}
 	slog.Info("Zeek analysis succeeded",
-		"task_id", req.TaskID,
+		"taskID", req.TaskID,
 		"uuid", req.UUID,
-		"pcap_file", req.PcapFilePath,
+		"pcapPath", req.PcapPath,
 		"script", req.ScriptPath,
 		"StartTime", time.Now().Format(time.RFC3339),
 	)
