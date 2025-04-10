@@ -50,11 +50,11 @@ docker run -d \
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
-    "pcap_file_path": "/opt/zeek_runner/pcaps/sshguess.pcap",
-    "script_path": "/opt/zeek_runner/scripts/brtforce.zeek",
-    "only_notice": true,
+    "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
+    "scriptPath": "/opt/zeek_runner/scripts/brtforce.zeek",
+    "onlyNotice": true,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
-    "task_id": "2333"
+    "taskID": "2333"
   }' \
   http://localhost:8000/api/v1/analyze
   
@@ -62,11 +62,11 @@ curl -X POST \
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
-    "pcap_file_path": "/opt/zeek_runner/pcaps/sshguess.pcap",
-    "script_path": "/opt/zeek_runner/scripts/brtforce.zeek",
-    "only_notice": false,
+    "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
+    "scriptPath": "/opt/zeek_runner/scripts/brtforce.zeek",
+    "onlyNotice": false,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
-    "task_id": "1212"
+    "taskID": "1212"
   }' \
   http://localhost:8000/api/v1/analyze
 # 调用 /api/v1/version/zeek 接口
@@ -81,9 +81,9 @@ curl http://localhost:8000/api/v1/version/zeek-kafka
 ##### 测试 kafka 消息、环境变量取值、二次开发zeek-kafka组件功能是否生效
 # config.zeek是自定义配置的 包含对kafka配置和消息的设置;本地测试时可以不指定，指定了会将消息发送到kafka,本地不生成log文件
 # ONLY_NOTICE=true 环境变量设置为true只发送notice日志 为false发送所有日志(除notice)
-# go程序中 config.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 only_notice三个参数;
+# go程序中 config.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 onlyNotice三个参数;
 ONLY_NOTICE=true SCRIPT_PATH=/xx/xx/scripts/brtforce.zeek \ 
-PCAP_FILE_PATH=/xx/xx/pcaps/sshguess.pcap \
+PCAP_PATH=/xx/xx/pcaps/sshguess.pcap \
 zeek -Cr ./pcaps/sshguess.pcap ./config.zeek ./scripts/brtforce.zeek
 
 ##### 仅本地测试
@@ -142,12 +142,12 @@ zeek -Cr ./xxx.pcap \
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
-    "extracted_file_path": "/path/for/save/extracted/files",
-    "extracted_file_min_size": 20,
-    "pcap_file_path": "/opt/zeek_runner/file_extract_scripts/xxx.pcap",
-    "script_path": "/opt/zeek_runner/file_extract_scripts/extract_http.zeek",
+    "extractedFilePath": "/path/for/save/extracted/files",
+    "extractedFileMinSize": 20,
+    "pcapPath": "/opt/zeek_runner/file_extract_scripts/xxx.pcap",
+    "scriptPath": "/opt/zeek_runner/file_extract_scripts/extract_http.zeek",
     "uuid": "233",
-    "task_id": "122"
+    "taskID": "122"
   }' \
   http://localhost:8000/api/v1/analyze
 ```
