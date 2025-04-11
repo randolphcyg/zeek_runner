@@ -1,13 +1,13 @@
 @load frameworks/files/extract-all-files
 @load base/utils/files
 
-global extracted_file_path = getenv("EXTRACTED_FILE_PATH");  # 文件存储路径
-global extracted_file_min_size = getenv("EXTRACTED_FILE_MIN_SIZE");  # 最小文件大小（KB）
-redef FileExtract::prefix = extracted_file_path;  # 文件提取前缀路径
+global extractedFilePath = getenv("EXTRACTED_FILE_PATH");  # 文件存储路径
+global extractedFileMinSize = getenv("EXTRACTED_FILE_MIN_SIZE");  # 最小文件大小（KB）
+redef FileExtract::prefix = extractedFilePath;  # 文件提取前缀路径
 const MIN_FILE_SIZE = 1 * 1024;  # 定义最小文件大小（KB）
 
 event zeek_init() {
-    Kafka::headers["extracted_file_path"] = FileExtract::prefix;
+    Kafka::headers["extractedFilePath"] = FileExtract::prefix;
 }
 
 # 允许提取的 MIME 类型列表
