@@ -20,7 +20,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o zeek_runner .
 
 # 使用官方的 Zeek 镜像作为基础
-FROM zeek/zeek:7.1.0
+FROM zeek/zeek:7.2.0
 
 # 设置环境变量，避免交互提示
 ENV DEBIAN_FRONTEND=noninteractive
