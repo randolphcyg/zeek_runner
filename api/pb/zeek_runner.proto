@@ -1,0 +1,31 @@
+syntax = "proto3";
+package zeek_runner;
+
+option go_package = "zeek_runner/api/pb";
+
+// 请求体
+message AnalyzeRequest {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  bool onlyNotice = 3;         // 是否只生成notice日志
+  string pcapID = 4;           // pcap文件ID
+  string pcapPath = 5;         // pcap文件路径
+  string scriptID = 6;         // 脚本ID
+  string scriptPath = 7;       // 脚本路径
+  string extractedFilePath = 8;// 提取文件存储路径
+  int32 extractedFileMinSize = 9;// 提取文件最小大小(KB)
+}
+
+// 响应体
+message AnalyzeResponse {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  string pcapPath = 3;         // pcap文件路径
+  string scriptPath = 4;       // 脚本路径
+  string startTime = 5;        // 任务开始时间
+}
+
+// gRPC服务定义
+service ZeekAnalysisService {
+  rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
+}

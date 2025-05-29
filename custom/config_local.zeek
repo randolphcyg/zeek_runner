@@ -1,7 +1,7 @@
 @load Seiso/Kafka  # 用于将 JSON 日志发送到 Kafka
 
 # 全局Kafka配置
-redef Kafka::topic_name = "zeek_logs";  # 全局默认topic
+redef Kafka::topic_name = "local_zeek_logs";  # 全局默认topic
 redef Kafka::kafka_conf += {
     ["metadata.broker.list"] = getenv("KAFKA_BROKERS"),
     ["compression.codec"] = "snappy",
@@ -72,19 +72,19 @@ event zeek_init() {
             filter_config = [
                 $name = "kafka-notice",
                 $writer = Log::WRITER_KAFKAWRITER,
-                $config = table(["topic_name"] = "zeek_notice")
+                $config = table(["topic_name"] = "local_zeek_notice")
             ];
         } else if (stream_id == TaskStatus::LOG) {
             filter_config = [
                 $name = "kafka-task-status",
                 $writer = Log::WRITER_KAFKAWRITER,
-                $config = table(["topic_name"] = "zeek_task_status")
+                $config = table(["topic_name"] = "local_zeek_task_status")
             ];
         } else if (stream_id == Files::LOG) {
             filter_config = [
                 $name = "kafka-files",
                 $writer = Log::WRITER_KAFKAWRITER,
-                $config = table(["topic_name"] = "zeek_extract_files")
+                $config = table(["topic_name"] = "local_zeek_extract_files")
             ];
         } else {  # 其他所有日志
             filter_config = [

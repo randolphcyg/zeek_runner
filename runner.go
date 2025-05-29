@@ -1,19 +1,137 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
+	"strings"
+	"sync"
+	"syscall"
 	"time"
 
+	"zeek_runner/api/pb"
+
 	"github.com/gin-gonic/gin"
+	"github.com/panjf2000/ants/v2"
 	"github.com/segmentio/kafka-go"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
+
+// 定义全局任务池
+var (
+	taskPool *ants.Pool
+	poolOnce sync.Once
+)
+
+// 初始化任务池
+func initTaskPool(size int) error {
+	var err error
+	poolOnce.Do(func() {
+		taskPool, err = ants.NewPool(size, ants.WithNonblocking(true))
+	})
+	return err
+}
+
+type GRPCServer struct {
+	pb.UnimplementedZeekAnalysisServiceServer
+}
+
+// 定义可重试的错误类型
+var retryableErrors = map[string]bool{
+	"cannot create hub": true,
+	"signal: killed":    true,
+	"signal: aborted":   true,
+}
+
+func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.AnalyzeResponse, error) {
+	analyzeReq := AnalyzeReq{
+		TaskID:               req.TaskID,
+		UUID:                 req.Uuid,
+		OnlyNotice:           req.OnlyNotice,
+		PcapID:               req.PcapID,
+		PcapPath:             req.PcapPath,
+		ScriptID:             req.ScriptID,
+		ScriptPath:           req.ScriptPath,
+		ExtractedFilePath:    req.ExtractedFilePath,
+		ExtractedFileMinSize: int(req.ExtractedFileMinSize),
+	}
+
+	// 验证请求
+	if err := validateAnalyzeReq(analyzeReq); err != nil {
+		slog.Error("Call Zeek err", "InvalidArgument", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+
+	// 创建结果通道
+	resultChan := make(chan error, 1)
+
+	// 提交任务到任务池
+	err := taskPool.Submit(func() {
+		_, err := runZeekAnalysis(analyzeReq)
+		resultChan <- err
+	})
+
+	if err != nil {
+		if errors.Is(err, ants.ErrPoolOverload) {
+			return nil, status.Errorf(codes.ResourceExhausted, "task pool is full, please try again later")
+		}
+		return nil, status.Errorf(codes.Internal, "failed to submit task: %v", err)
+	}
+
+	// 等待任务完成
+	select {
+	case err := <-resultChan:
+		if err != nil {
+			// 检查是否是可重试的错误
+			errorMsg := err.Error()
+			isRetryable := false
+			for retryableErr := range retryableErrors {
+				if strings.Contains(errorMsg, retryableErr) {
+					isRetryable = true
+					break
+				}
+			}
+
+			if isRetryable {
+				return nil, status.Errorf(codes.Unavailable, "temporary error, please retry: %v", err)
+			}
+
+			slog.Error("Zeek analysis err", "Internal", err.Error())
+			return nil, status.Errorf(codes.Internal, "analysis failed: %v", err)
+		}
+	case <-ctx.Done():
+		return nil, status.Errorf(codes.Canceled, "request canceled")
+	}
+
+	// 构造响应
+	resp := &pb.AnalyzeResponse{
+		TaskID:     analyzeReq.TaskID,
+		Uuid:       analyzeReq.UUID,
+		PcapPath:   analyzeReq.PcapPath,
+		ScriptPath: analyzeReq.ScriptPath,
+		StartTime:  time.Now().Format(time.RFC3339),
+	}
+
+	slog.Info("Zeek analysis succeeded",
+		"taskID", req.TaskID,
+		"uuid", req.Uuid,
+		"pcapPath", req.PcapPath,
+		"script", req.ScriptPath,
+		"StartTime", time.Now().Format(time.RFC3339),
+	)
+	return resp, nil
+}
 
 // AnalyzeReq 分析接口请求体
 type AnalyzeReq struct {
@@ -67,7 +185,6 @@ func validateAnalyzeReq(req AnalyzeReq) error {
 	return nil
 }
 
-// 执行 Zeek 分析
 func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 	timeoutMinutes, err := strconv.Atoi(os.Getenv("ZEEK_TIMEOUT_MINUTES"))
 	if err != nil || timeoutMinutes <= 0 {
@@ -76,9 +193,10 @@ func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
+	// 使用 Zeek 命令
 	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath)
 
-	// 设置独立环境变量
+	// 设置环境变量
 	env := os.Environ()
 	if req.TaskID != "" {
 		env = append(env, "TASK_ID="+req.TaskID)
@@ -110,13 +228,39 @@ func runZeekAnalysis(req AnalyzeReq) ([]byte, error) {
 
 	cmd.Env = env
 
-	output, err := cmd.CombinedOutput()
+	// 捕获标准输出和标准错误
+	var outb, errb bytes.Buffer
+	cmd.Stdout = &outb
+	cmd.Stderr = &errb
+
+	// 记录开始时间
+	startTime := time.Now()
+
+	err = cmd.Run()
+	output := append(outb.Bytes(), errb.Bytes()...) // 合并标准输出和标准错误
+
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return output, errors.New("zeek analysis timed out after " + strconv.Itoa(timeoutMinutes) + " minutes")
 		}
-		return output, err
+
+		// 记录完整的错误输出
+		fullErrorOutput := string(output)
+		slog.Error("Zeek command failed",
+			"error", err,
+			"output", fullErrorOutput,
+			"taskID", req.TaskID,
+			"uuid", req.UUID,
+			"processing_time", time.Since(startTime))
+		return output, fmt.Errorf("zeek execution failed: %w. Output: %s", err, fullErrorOutput)
 	}
+
+	// 记录成功信息
+	slog.Info("Zeek analysis completed",
+		"taskID", req.TaskID,
+		"uuid", req.UUID,
+		"processing_time", time.Since(startTime))
+
 	return output, nil
 }
 
@@ -180,48 +324,114 @@ func checkKafka() error {
 	return nil
 }
 
+// 在 Gin 中添加中间件
+func addSecurityMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 禁止空 User-Agent
+		if c.GetHeader("User-Agent") == "" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "User-Agent is required"})
+			return
+		}
+
+		allowedPaths := map[string]bool{
+			"/api/v1/analyze":            true,
+			"/api/v1/version/zeek":       true,
+			"/api/v1/version/zeek-kafka": true,
+			"/api/v1/healthz":            true,
+		}
+		if !allowedPaths[c.Request.URL.Path] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "path not allowed"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func main() {
-	// Kafka 连接检查（带重试）
-	maxRetries := 3
-	retryDelay := 5 * time.Second
-	var kafkaErr error
-
-	for i := 0; i < maxRetries; i++ {
-		kafkaErr = checkKafka()
-		if kafkaErr == nil {
-			slog.Info("Kafka connection successful!")
-			break
-		}
-
-		slog.Error("Kafka check failed",
-			"attempt", i+1,
-			"max_retries", maxRetries,
-			"error", kafkaErr,
-		)
-		if i == maxRetries-1 {
-			slog.Error("All Kafka connection attempts failed",
-				"final_error", kafkaErr,
-				"action", "service_will_not_start",
-			)
-			os.Exit(1) // 非零退出码表示失败
-		}
-		time.Sleep(retryDelay)
+	// 从环境变量获取并发数，默认为 8
+	poolSize, err := strconv.Atoi(os.Getenv("ZEEK_CONCURRENT_TASKS"))
+	if err != nil || poolSize <= 0 {
+		poolSize = 8
 	}
 
-	r := gin.Default()
-
-	api := r.Group("/api/v1")
-	{
-		api.POST("/analyze", handleZeekAnalysis)            // 分析接口
-		api.GET("/version/zeek", getZeekVersion)            // zeek版本接口
-		api.GET("/version/zeek-kafka", getZeekKafkaVersion) // 检查 zeek-kafka 版本接口
-	}
-
-	// 启动服务
-	if err := r.Run(":8000"); err != nil {
-		slog.Error("Failed to start server", "error", err)
+	// 初始化任务池
+	if err := initTaskPool(poolSize); err != nil {
+		slog.Error("Failed to initialize task pool", "error", err)
 		os.Exit(1)
 	}
+	defer taskPool.Release()
+
+	// 启动 Kafka 连接检查（带重试）
+	go func() {
+		maxRetries := 3
+		retryDelay := 5 * time.Second
+		var kafkaErr error
+
+		for i := 0; i < maxRetries; i++ {
+			kafkaErr = checkKafka()
+			if kafkaErr == nil {
+				slog.Info("Kafka connection successful!")
+				return
+			}
+
+			slog.Error("Kafka check failed",
+				"attempt", i+1,
+				"max_retries", maxRetries,
+				"error", kafkaErr,
+			)
+			if i == maxRetries-1 {
+				slog.Error("All Kafka connection attempts failed",
+					"final_error", kafkaErr,
+					"action", "service_will_not_start",
+				)
+				os.Exit(1)
+			}
+			time.Sleep(retryDelay)
+		}
+	}()
+
+	// 启动 HTTP 服务（异步）
+	go func() {
+		r := gin.Default()
+		api := r.Group("/api/v1")
+		api.Use(addSecurityMiddleware())
+		{
+			api.POST("/analyze", handleZeekAnalysis)
+			api.GET("/version/zeek", getZeekVersion)
+			api.GET("/version/zeek-kafka", getZeekKafkaVersion)
+			// 健康检查接口
+			api.GET("/healthz", func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"status": "ok"})
+			})
+		}
+
+		if err := r.Run(":8000"); err != nil && err != http.ErrServerClosed {
+			slog.Error("HTTP server stopped", "error", err)
+		}
+	}()
+
+	// 启动 gRPC 服务（异步）
+	go func() {
+		lis, err := net.Listen("tcp", ":50051")
+		if err != nil {
+			panic(err)
+		}
+		grpcServer := grpc.NewServer()
+		pb.RegisterZeekAnalysisServiceServer(grpcServer, &GRPCServer{})
+		reflection.Register(grpcServer)
+
+		slog.Info("gRPC server starting on :50051")
+		if err := grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			slog.Error("gRPC server stopped", "error", err)
+		}
+	}()
+
+	// 优雅退出
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down server...")
 }
 
 type zeekVersionResp struct {
