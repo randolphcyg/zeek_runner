@@ -1,13 +1,4 @@
-# go + zeek7.1.0 + zeek-kafka(Custom enhanced version) + librdkafka2.8.0 + kafka = zeek_runner
-
-## pcap流量包及zeek脚本说明
-```shell
-大部分流量包不上传了,省空间，可以去开源网站下载测试;
-
-脚本从一些仓库找到并修改,后续还会修正和更新;
-
-若有高并发需求时,可以通过拓展zeek节点和runner多副本增加并发;
-```
+# go + zeek7.2.0 + zeek-kafka(Custom enhanced version) + librdkafka2.8.0 + kafka = zeek_runner
 
 ## 依赖说明
 ```shell
@@ -23,9 +14,9 @@ https://github.com/randolphcyg/zeek-kafka/
 ## docker部署
 ```shell
 # 基础镜像
-docker pull golang:1.24.2 --platform linux/amd64
-docker tag golang:1.24.2 golang:1.24-u22
-docker pull zeek/zeek:7.1.0 --platform linux/amd64
+docker pull golang:1.24 --platform linux/amd64
+docker tag golang:1.24 golang:1.24-u22
+docker pull zeek/zeek:7.2.0 --platform linux/amd64
 
 # 构建
 sudo docker build -t zeek_runner:1.0 . --platform linux/amd64
@@ -34,12 +25,16 @@ sudo docker save zeek_runner:1.0  | gzip > zeek_runner_1_0.tar.gz
 # 解压镜像
 docker load -i zeek_runner_1_0.tar.gz
 
-# 运行前需要修改docker命令中的kafka连接配置
-# 一定保证宿主机挂载脚本和pcap文件路径和容器中一致，这样传给zeek脚本的路径可以轻松定位到宿主机文件位置！！！
+
+# 更新proto
+运行Makefile即可
+
 docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
+  -p 50051:50051 \
   -e KAFKA_BROKERS="10.10.10.218:9092" \
+  -e ZEEK_CONCURRENT_TASKS=16 \
   -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
   -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
   -v /path/for/save/extracted/files:/path/for/save/extracted/files \

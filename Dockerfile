@@ -1,5 +1,5 @@
 # 第一阶段：构建阶段
-FROM golang:1.24-u22 AS builder
+FROM golang:1.24 AS builder
 
 LABEL stage=gobuilder
 
