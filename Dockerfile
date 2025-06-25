@@ -1,5 +1,5 @@
 # 第一阶段：构建阶段
-FROM golang:1.24 AS builder
+FROM golang:1.24-u22 AS builder
 
 LABEL stage=gobuilder
 
@@ -20,7 +20,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o zeek_runner .
 
 # 使用官方的 Zeek 镜像作为基础
-FROM zeek/zeek:7.2.0
+FROM zeek/zeek:7.2.1
 
 # 设置环境变量，避免交互提示
 ENV DEBIAN_FRONTEND=noninteractive
