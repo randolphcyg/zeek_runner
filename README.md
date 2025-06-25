@@ -19,11 +19,11 @@ docker tag golang:1.24 golang:1.24-u22
 docker pull zeek/zeek:7.2.0 --platform linux/amd64
 
 # 构建
-sudo docker build -t zeek_runner:1.0 . --platform linux/amd64
+sudo docker build -t zeek_runner:2.0 . --platform linux/amd64
 # 容器导出
-sudo docker save zeek_runner:1.0  | gzip > zeek_runner_1_0.tar.gz
+sudo docker save zeek_runner:2.0  | gzip > zeek_runner_2_0.tar.gz
 # 解压镜像
-docker load -i zeek_runner_1_0.tar.gz
+docker load -i zeek_runner_2_0.tar.gz
 
 
 # 更新proto
