@@ -1,4 +1,4 @@
-# go + zeek7.2.0 + zeek-kafka(Custom enhanced version) + librdkafka2.8.0 + kafka = zeek_runner
+# go + zeek7.2.1 + zeek-kafka(Custom enhanced version) + librdkafka2.8.0 + kafka = zeek_runner
 
 ## 依赖说明
 ```shell
@@ -16,7 +16,7 @@ https://github.com/randolphcyg/zeek-kafka/
 # 基础镜像
 docker pull golang:1.24 --platform linux/amd64
 docker tag golang:1.24 golang:1.24-u22
-docker pull zeek/zeek:7.2.0 --platform linux/amd64
+docker pull zeek/zeek:7.2.1 --platform linux/amd64
 
 # 构建
 sudo docker build -t zeek_runner:2.0 . --platform linux/amd64
