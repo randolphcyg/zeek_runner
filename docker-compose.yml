@@ -1,9 +1,8 @@
-version: '3.8'
-
 services:
   zeek_runner:
-    image: zeek_runner:1.0
+    image: zeek_runner:2.1
     container_name: zeek_runner
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
@@ -12,6 +11,3 @@ services:
       - /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps
       - /opt/zeek_runner/scripts:/opt/zeek_runner/scripts
       - /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
-    restart: always
-    deploy:
-      replicas: 3

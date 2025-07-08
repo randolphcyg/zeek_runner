@@ -1,45 +1,20 @@
-# 第一阶段：构建阶段
-FROM golang:1.24-u22 AS builder
-
-LABEL stage=gobuilder
-
-# 设置 Go 环境变量
-ENV PATH="/usr/local/go/bin:${PATH}"
-
-# 设置工作目录
-WORKDIR /app
-
-# 复制 Go 依赖文件并下载依赖
-COPY go.mod go.sum ./
-RUN go mod download
-
-# 复制全部代码
-COPY . .
-
-# 构建 Go 应用
-RUN CGO_ENABLED=0 go build -o zeek_runner .
-
-# 使用官方的 Zeek 镜像作为基础
-FROM zeek/zeek:7.2.1
-
-# 设置环境变量，避免交互提示
+# build zeek
+FROM zeek/zeek:7.2.1 AS zeek-builder
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 安装 Go 和 Kafka 插件依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     cmake \
     make \
     curl \
-    unzip \
     build-essential \
     libpcap-dev \
     libssl-dev \
     librdkafka-dev \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# 下载并解压 zeek-kafka 插件
+# zeek-kafka
 RUN curl -L -o /zeek-kafka.tar.gz https://github.com/randolphcyg/zeek-kafka/archive/refs/tags/v2.1.tar.gz \
     && tar -xzf /zeek-kafka.tar.gz -C / \
     && mv /zeek-kafka-2.1 /zeek-kafka \
@@ -49,26 +24,43 @@ RUN curl -L -o /zeek-kafka.tar.gz https://github.com/randolphcyg/zeek-kafka/arch
     && make \
     && make install \
     && cd / \
-    && rm -rf /zeek-kafka
+    && rm -rf /zeek-kafka* /var/lib/apt/lists/*
 
-ENV TZ=Asia/Shanghai
-# 设置工作目录
+# build server
+FROM golang:1.24-alpine AS go-builder
 WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o zeek_runner .
 
-# 复制编译好的二进制文件
-COPY --from=builder /app/zeek_runner .
+# runtime
+FROM zeek/zeek:7.2.1
+ENV TZ=Asia/Shanghai
 
-# 赋予二进制文件执行权限
-RUN chmod +x zeek_runner
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcap0.8 \
+    librdkafka++1 \
+    openssl \
+    tzdata && \
+    ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    apt-get clean && \
+    rm -rf \
+        /var/lib/apt/lists/* \
+        /usr/share/doc/* \
+        /usr/share/man/* \
+        /tmp/* \
+        /var/tmp/*
 
-# 加载自定义通用配置文件
+COPY --from=zeek-builder /usr/local/zeek /usr/local/zeek
+COPY --from=go-builder /app/zeek_runner /app/
+
+# load custom config
 RUN mkdir -p /usr/local/zeek/share/zeek/base/custom
 COPY ./custom/config.zeek /usr/local/zeek/share/zeek/base/custom
 COPY ./custom/__load__.zeek /usr/local/zeek/share/zeek/base/custom
 RUN echo "@load base/custom" >> /usr/local/zeek/share/zeek/base/init-default.zeek
 
-# 暴露 API 端口
+WORKDIR /app
 EXPOSE 8000
-
-# 启动服务
 CMD ["./zeek_runner"]
