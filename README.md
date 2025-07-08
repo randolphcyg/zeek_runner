@@ -1,4 +1,4 @@
-# go + zeek7.2.0 + zeek-kafka(Custom enhanced version) + librdkafka2.8.0 + kafka = zeek_runner
+# go + zeek7.2.1 + zeek-kafka(Custom enhanced version) + librdkafka2.8.0 + kafka = zeek_runner
 
 ## 依赖说明
 ```shell
