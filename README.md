@@ -14,16 +14,15 @@ https://github.com/randolphcyg/zeek-kafka/
 ## docker部署
 ```shell
 # 基础镜像
-docker pull golang:1.24 --platform linux/amd64
-docker tag golang:1.24 golang:1.24-u22
-docker pull zeek/zeek:7.2.0 --platform linux/amd64
+docker pull golang:1.24-alpine --platform linux/amd64
+docker pull zeek/zeek:7.2.1 --platform linux/amd64
 
 # 构建
-sudo docker build -t zeek_runner:2.0 . --platform linux/amd64
+sudo docker build -t zeek_runner:2.1 . --platform linux/amd64
 # 容器导出
-sudo docker save zeek_runner:2.0  | gzip > zeek_runner_2_0.tar.gz
+sudo docker save zeek_runner:2.1  | gzip > zeek_runner_2_1.tar.gz
 # 解压镜像
-docker load -i zeek_runner_2_0.tar.gz
+docker load -i zeek_runner_2_1.tar.gz
 
 
 # 更新proto
@@ -39,7 +38,7 @@ docker run -d \
   -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
   -v /path/for/save/extracted/files:/path/for/save/extracted/files \
   -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
-  zeek_runner:1.0
+  zeek_runner:2.1
 
 # 测试检测恶意行为发送到kafka 仅notice日志
 curl -X POST \

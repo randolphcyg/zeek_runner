@@ -1,0 +1,13 @@
+pcaps
+libs
+**/.git
+**/.idea
+.gitignore
+deploy.sh
+**/*.md
+**/*.log
+**/docs/
+**/vendor/
+LICENSE
+Dockerfile
+*.tar.gz
