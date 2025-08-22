@@ -1,33 +1,57 @@
 # build zeek
-FROM zeek/zeek:7.2.1 AS zeek-builder
+FROM zeek/zeek:8.0.0 AS zeek-builder
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    cmake \
-    make \
-    curl \
-    build-essential \
-    libpcap-dev \
-    libssl-dev \
-    librdkafka-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Optionally use a mirror
+ARG APT_MIRROR=
+RUN if [ -n "$APT_MIRROR" ]; then \
+        echo "deb $APT_MIRROR/debian bookworm main" > /etc/apt/sources.list && \
+        echo "deb $APT_MIRROR/debian-security bookworm-security main" >> /etc/apt/sources.list && \
+        echo "deb $APT_MIRROR/debian bookworm-updates main" >> /etc/apt/sources.list; \
+    else \
+        echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list && \
+        echo "deb http://deb.debian.org/debian-security bookworm-security main" >> /etc/apt/sources.list && \
+        echo "deb http://deb.debian.org/debian bookworm-updates main" >> /etc/apt/sources.list; \
+    fi && \
+    for i in 1 2 3; do \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            wget \
+            cmake \
+            make \
+            curl \
+            build-essential \
+            libpcap-dev \
+            libssl-dev \
+            librdkafka-dev \
+            libzmq5 \
+            libzmq3-dev \
+            cppzmq-dev \
+        && break || (sleep 5 && echo "Attempt $i failed"); \
+    done && \
+    apt-get clean
 
 # zeek-kafka
-RUN curl -L -o /zeek-kafka.tar.gz https://github.com/randolphcyg/zeek-kafka/archive/refs/tags/v2.1.tar.gz \
-    && tar -xzf /zeek-kafka.tar.gz -C / \
-    && mv /zeek-kafka-2.1 /zeek-kafka \
-    && rm /zeek-kafka.tar.gz \
-    && cd /zeek-kafka \
-    && ./configure \
-    && make \
-    && make install \
-    && cd / \
-    && rm -rf /zeek-kafka* /var/lib/apt/lists/*
+RUN for i in 1 2 3; do \
+        apt-get update && \
+        apt-get install -y --no-install-recommends curl && \
+        curl -L -o /zeek-kafka.tar.gz https://github.com/randolphcyg/zeek-kafka/archive/refs/tags/v2.2.tar.gz \
+        && tar -xzf /zeek-kafka.tar.gz -C / \
+        && mv /zeek-kafka-2.2 /zeek-kafka \
+        && rm /zeek-kafka.tar.gz \
+        && cd /zeek-kafka \
+        && ./configure \
+        && make \
+        && make install \
+        && cd / \
+        && rm -rf /zeek-kafka* && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+        break || (sleep 5 && echo "Attempt $i failed"); \
+    done
 
 # build server
-FROM golang:1.24-alpine AS go-builder
+FROM golang:1.25-alpine AS go-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -35,14 +59,30 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o zeek_runner .
 
 # runtime
-FROM zeek/zeek:7.2.1
+FROM zeek/zeek:8.0.0
 ENV TZ=Asia/Shanghai
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpcap0.8 \
-    librdkafka++1 \
-    openssl \
-    tzdata && \
+# Optionally use a mirror
+ARG APT_MIRROR=
+RUN if [ -n "$APT_MIRROR" ]; then \
+        echo "deb $APT_MIRROR/debian bookworm main" > /etc/apt/sources.list && \
+        echo "deb $APT_MIRROR/debian-security bookworm-security main" >> /etc/apt/sources.list && \
+        echo "deb $APT_MIRROR/debian bookworm-updates main" >> /etc/apt/sources.list; \
+    else \
+        echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list && \
+        echo "deb http://deb.debian.org/debian-security bookworm-security main" >> /etc/apt/sources.list && \
+        echo "deb http://deb.debian.org/debian bookworm-updates main" >> /etc/apt/sources.list; \
+    fi && \
+    for i in 1 2 3; do \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            libpcap0.8 \
+            librdkafka++1 \
+            openssl \
+            libzmq5 \
+            tzdata \
+        && break || (sleep 5 && echo "Attempt $i failed"); \
+    done && \
     ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     apt-get clean && \
     rm -rf \
