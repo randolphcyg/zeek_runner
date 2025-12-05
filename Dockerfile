@@ -1,5 +1,5 @@
 # build zeek
-FROM zeek/zeek:8.0.0 AS zeek-builder
+FROM zeek/zeek:8.0.4 AS zeek-builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Optionally use a mirror
@@ -59,7 +59,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o zeek_runner .
 
 # runtime
-FROM zeek/zeek:8.0.0
+FROM zeek/zeek:8.0.4
 ENV TZ=Asia/Shanghai
 
 # Optionally use a mirror
