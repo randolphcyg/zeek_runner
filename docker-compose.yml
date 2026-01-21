@@ -1,12 +1,12 @@
 services:
   zeek_runner:
-    image: zeek_runner:2.2
+    image: zeek_runner:latest
     container_name: zeek_runner
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      - KAFKA_BROKERS=192.168.11.71:9092
+      - KAFKA_BROKERS=192.168.12.224:9092
     volumes:
       - /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps
       - /opt/zeek_runner/scripts:/opt/zeek_runner/scripts
