@@ -1,4 +1,4 @@
-# go + zeek8.0.4 + zeek-kafka(Custom enhanced version) + librdkafka2.8.0 + kafka = zeek_runner
+# zeek + zeek-kafka + kafka = zeek_runner
 
 ## 依赖说明
 ```shell
@@ -12,36 +12,45 @@ https://github.com/randolphcyg/zeek-kafka/
 ```
 
 ## docker部署
+
+#### 构建
+
 ```shell
-# 基础镜像
-docker pull golang:1.25-alpine --platform linux/amd64
-docker pull zeek/zeek:8.0.4 --platform linux/amd64
-
-# 构建
-sudo docker build -t zeek_runner:2.3 . --platform linux/amd64
-# 指定国内仓库
-sudo docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:2.3 . --platform linux/amd64
-# 容器导出
-sudo docker save zeek_runner:2.3  | gzip > zeek_runner_2_3.tar.gz
-# 解压镜像
-docker load -i zeek_runner_2_3.tar.gz
-
-
 # 更新proto
 运行Makefile即可
 
+# 基础镜像
+docker pull golang:1.25-alpine --platform linux/amd64
+docker pull zeek/zeek:8.1.0 --platform linux/amd64
+
+docker build -t zeek_runner:latest . --platform linux/amd64
+# 指定国内仓库
+docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:latest . --platform linux/amd64
+# 容器导出
+docker save zeek_runner:latest  | gzip > zeek_runner.tar.gz
+# 解压镜像
+docker load -i zeek_runner.tar.gz
+```
+
+#### 运行
+
+```shell
 docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -e KAFKA_BROKERS="10.10.10.218:9092" \
+  -e KAFKA_BROKERS="192.168.2.6:9092" \
   -e ZEEK_CONCURRENT_TASKS=16 \
   -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
   -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
   -v /path/for/save/extracted/files:/path/for/save/extracted/files \
   -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
-  zeek_runner:2.3
+  zeek_runner:latest
+```
 
+### 测试
+
+```shell
 # 测试检测恶意行为发送到kafka 仅notice日志
 curl -X POST \
   -H "Content-Type: application/json" \
@@ -72,7 +81,7 @@ curl http://localhost:8000/api/v1/version/zeek
 curl http://localhost:8000/api/v1/version/zeek-kafka
 ```
 
-## 直接使用本机zeek测试
+### 直接使用本机zeek测试
 ```shell
 ##### 测试 kafka 消息、环境变量取值、二次开发zeek-kafka组件功能是否生效
 # config.zeek是自定义配置的 包含对kafka配置和消息的设置;本地测试时可以不指定，指定了会将消息发送到kafka,本地不生成log文件
@@ -148,7 +157,7 @@ curl -X POST \
   http://localhost:8000/api/v1/analyze
 ```
 
-## docker-compose部署
+### docker-compose部署
 ```shell
 docker-compose up -d
 docker-compose down
