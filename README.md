@@ -56,7 +56,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
-    "scriptPath": "/opt/zeek_runner/scripts/brtforce.zeek",
+    "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": true,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
     "taskID": "2333"
@@ -68,7 +68,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
-    "scriptPath": "/opt/zeek_runner/scripts/brtforce.zeek",
+    "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": false,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
     "taskID": "1212"
@@ -87,50 +87,50 @@ curl http://localhost:8000/api/v1/version/zeek-kafka
 # config.zeek是自定义配置的 包含对kafka配置和消息的设置;本地测试时可以不指定，指定了会将消息发送到kafka,本地不生成log文件
 # ONLY_NOTICE=true 环境变量设置为true只发送notice日志 为false发送所有日志(除notice)
 # go程序中 config.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 onlyNotice三个参数;
-ONLY_NOTICE=true SCRIPT_PATH=/xx/xx/scripts/brtforce.zeek \ 
+ONLY_NOTICE=true SCRIPT_PATH=/xx/xx/scripts/detect_ssh_bruteforce.zeek \ 
 PCAP_PATH=/xx/xx/pcaps/sshguess.pcap \
-zeek -Cr ./pcaps/sshguess.pcap ./config.zeek ./scripts/brtforce.zeek
+zeek -Cr ./pcaps/sshguess.pcap ./config.zeek ./scripts/detect_ssh_bruteforce.zeek
 
 ##### 仅本地测试
 
-# bruteforce
+# SSH 暴力破解攻击
 zeek -Cr ./pcaps/sshguess.pcap \
-./test.zeek ./scripts/brtforce.zeek
+./test.zeek ./scripts/detect_ssh_bruteforce.zeek
 
-# dns ddos
+# DNS 洪水攻击 / 放大攻击
 zeek -Cr ./amp.dns.RRSIG.fragmented.pcap \
 ./test.zeek \
-./scripts/dns_ddos.zeek
+./scripts/detect_dns_flood.zeek
 
-# 异常agent TODO 待测试修改
-zeek -Cr ./pcaps/http_user_agent.pcap \
+# 恶意 User-Agent 检测
+zeek -Cr ./pcaps/ua.pcap \
 ./test.zeek \
-./scripts/http_user_agent.zeek
+./scripts/detect_http_suspicious_ua.zeek
 
-# 异常文件上传
-zeek -Cr ./pcaps/http_file_upload.pcap \
+# HTTP 恶意文件上传 (Webshell)
+zeek -Cr ./pcaps/BTLOPortScan.pcap \
 ./test.zeek \
-./scripts/http_file_upload.zeek
+./scripts/detect_http_webshell.zeek
 
-# http dos
+# HTTP 拒绝服务攻击 (CC攻击)
 zeek -Cr ./pcaps/HTTPDoSNovember2021.pcapng \
 ./test.zeek \
-./scripts/http_dos.zeek
+./scripts/detect_http_flood.zeek
 
-# synflood
+# TCP SYN 洪水攻击
 zeek -Cr ./pcaps/SYNflood.pcap \
 ./test.zeek \
-./scripts/synflood_detection.zeek
+./scripts/detect_syn_flood.zeek
 
-# rfc_scp
+# SSH 异常大文件传输 (SCP/SFTP)
 zeek -Cr ./pcaps/scp.pcapng \
 ./test.zeek \
-./scripts/rfc_scp.zeek
+./scripts/detect_ssh_file_transfer.zeek
 
-# 非法unix命令执行 TODO 待测试修改
-zeek -Cr ./pcaps/unix_command_injection.pcap \
+# Unix 命令注入攻击
+zeek -Cr ./pcaps/exploit.pcap \
 ./test.zeek \
-./scripts/unix_command_injection.zeek
+./scripts/detect_http_cmd_injection.zeek
 
 
 ## 提取文件模式测试
