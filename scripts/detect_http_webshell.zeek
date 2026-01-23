@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_HTTP_WEBSHELL_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：HTTP 恶意文件上传 (Webshell)
-# 行为分类：Web 攻击 / 权限维持
-# 行为描述：检测通过 HTTP POST/PUT 上传的可疑 MIME 类型文件或高危后缀脚本
+# 行为类型：HTTP恶意文件上传(Webshell)
+# 行为分类：Web攻击/权限维持
+# 行为描述：检测通过HTTP POST/PUT上传的可疑MIME类型文件或高危后缀脚本
 
 @load base/frameworks/notice
 @load base/protocols/http

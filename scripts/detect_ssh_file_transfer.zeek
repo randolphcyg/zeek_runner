@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_SSH_FILE_TRANSFER_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：SSH 异常大文件传输 (SCP/SFTP)
-# 行为分类：数据泄露 / 流量异常
-# 行为描述：检测已认证 SSH 连接中的异常单向大数据流，识别疑似数据窃取行为
+# 行为类型：SSH异常大文件传输(SCP/SFTP)
+# 行为分类：数据泄露/流量异常
+# 行为描述：检测已认证SSH连接中的异常单向大数据流，识别疑似数据窃取行为
 
 @load base/frameworks/notice
 @load base/protocols/ssh

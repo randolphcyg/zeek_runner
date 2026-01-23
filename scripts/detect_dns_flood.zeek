@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_DNS_FLOOD_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：DNS 洪水攻击 / 放大攻击
-# 行为分类：拒绝服务攻击 (DoS)
-# 行为描述：检测高频 DNS 查询、响应风暴及 ANY 类型放大攻击特征
+# 行为类型：DNS 洪水攻击/放大攻击
+# 行为分类：拒绝服务攻击(DoS)
+# 行为描述：检测高频DNS查询、响应风暴及ANY类型放大攻击特征
 
 @load base/frameworks/notice
 @load base/frameworks/sumstats

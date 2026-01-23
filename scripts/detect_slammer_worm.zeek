@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_SLAMMER_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：SQL Slammer 蠕虫 / UDP Flood
-# 行为分类：蠕虫病毒 / 拒绝服务
-# 行为描述：检测针对 UDP 1434 端口的异常流量，识别 Slammer 蠕虫的经典特征
+# 行为类型：SQL Slammer蠕虫/UDP Flood
+# 行为分类：蠕虫病毒/拒绝服务
+# 行为描述：检测针对UDP1434端口的异常流量，识别Slammer蠕虫的经典特征
 
 @load base/frameworks/notice
 
