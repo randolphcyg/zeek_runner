@@ -167,8 +167,11 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 	env := os.Environ()
 	envMap := map[string]string{
 		"TASK_ID": req.TaskID, "UUID": req.UUID,
-		"ONLY_NOTICE": strconv.FormatBool(req.OnlyNotice),
-		"PCAP_PATH":   req.PcapPath, "SCRIPT_PATH": req.ScriptPath,
+		"ONLY_NOTICE":             strconv.FormatBool(req.OnlyNotice),
+		"PCAP_ID":                 req.PcapID,
+		"PCAP_PATH":               req.PcapPath,
+		"SCRIPT_ID":               req.ScriptID,
+		"SCRIPT_PATH":             req.ScriptPath,
 		"EXTRACTED_FILE_PATH":     req.ExtractedFilePath,
 		"EXTRACTED_FILE_MIN_SIZE": strconv.Itoa(req.ExtractedFileMinSize),
 	}
@@ -211,6 +214,12 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 func validateReq(req AnalyzeReq) error {
 	if req.TaskID == "" || req.UUID == "" {
 		return errors.New("missing taskID or uuid")
+	}
+	if req.PcapID == "" {
+		return errors.New("missing pcapID")
+	}
+	if req.ScriptID == "" {
+		return errors.New("missing scriptID")
 	}
 	if req.PcapPath == "" || req.ScriptPath == "" {
 		return errors.New("missing paths")
@@ -262,7 +271,8 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 	// gRPC 请求转换
 	ar := AnalyzeReq{
 		TaskID: req.TaskID, UUID: req.Uuid, OnlyNotice: req.OnlyNotice,
-		PcapPath: req.PcapPath, ScriptPath: req.ScriptPath,
+		PcapID: req.PcapID, PcapPath: req.PcapPath,
+		ScriptID: req.ScriptID, ScriptPath: req.ScriptPath,
 		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
 	}
 
@@ -379,7 +389,7 @@ func main() {
 	// 4. 启动 HTTP (异步)
 	go func() {
 		slog.Info("HTTP started", "addr", config.ListenHTTP)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("HTTP error", "err", err)
 		}
 	}()
