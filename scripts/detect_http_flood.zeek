@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_HTTP_FLOOD_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：HTTP 拒绝服务攻击 (CC攻击)
+# 行为类型：HTTP拒绝服务攻击(CC攻击)
 # 行为分类：拒绝服务攻击
-# 行为描述：检测高频 HTTP 请求，基于短时间内的请求计数统计
+# 行为描述：检测高频HTTP请求，基于短时间内的请求计数统计
 
 @load base/frameworks/notice
 @load base/frameworks/sumstats

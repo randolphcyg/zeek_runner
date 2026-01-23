@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_SYN_FLOOD_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：TCP SYN 洪水攻击
-# 行为分类：拒绝服务攻击 (DoS)
-# 行为描述：检测源 IP 发送大量 SYN 包但未建立连接的行为 (Half-open connections)
+# 行为类型：TCP SYN洪水攻击
+# 行为分类：拒绝服务攻击(DoS)
+# 行为描述：检测源IP发送大量SYN包但未建立连接的行为(Half-open connections)
 
 @load base/frameworks/sumstats
 @load base/frameworks/notice

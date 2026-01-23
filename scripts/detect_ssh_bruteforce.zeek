@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_SSH_BRTFORCE_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：SSH 暴力破解攻击
+# 行为类型：SSH暴力破解攻击
 # 行为分类：暴力破解
-# 行为描述：检测针对 SSH 服务的频繁登录尝试，限制密码猜测次数
+# 行为描述：检测针对SSH服务的频繁登录尝试，限制密码猜测次数
 
 @load protocols/ssh/detect-bruteforcing
 

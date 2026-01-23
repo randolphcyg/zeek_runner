@@ -93,41 +93,41 @@ zeek -Cr ./pcaps/sshguess.pcap ./config.zeek ./scripts/detect_ssh_bruteforce.zee
 
 ##### 仅本地测试
 
-# SSH 暴力破解攻击
+# SSH暴力破解攻击
 zeek -Cr ./pcaps/sshguess.pcap \
 ./test.zeek ./scripts/detect_ssh_bruteforce.zeek
 
-# DNS 洪水攻击 / 放大攻击
+# DNS洪水攻击/放大攻击
 zeek -Cr ./amp.dns.RRSIG.fragmented.pcap \
 ./test.zeek \
 ./scripts/detect_dns_flood.zeek
 
-# 恶意 User-Agent 检测
+# 恶意User-Agent检测
 zeek -Cr ./pcaps/ua.pcap \
 ./test.zeek \
 ./scripts/detect_http_suspicious_ua.zeek
 
-# HTTP 恶意文件上传 (Webshell)
+# HTTP恶意文件上传(Webshell)
 zeek -Cr ./pcaps/BTLOPortScan.pcap \
 ./test.zeek \
 ./scripts/detect_http_webshell.zeek
 
-# HTTP 拒绝服务攻击 (CC攻击)
+# HTTP拒绝服务攻击(CC攻击)
 zeek -Cr ./pcaps/HTTPDoSNovember2021.pcapng \
 ./test.zeek \
 ./scripts/detect_http_flood.zeek
 
-# TCP SYN 洪水攻击
+# TCP SYN洪水攻击
 zeek -Cr ./pcaps/SYNflood.pcap \
 ./test.zeek \
 ./scripts/detect_syn_flood.zeek
 
-# SSH 异常大文件传输 (SCP/SFTP)
+# SSH异常大文件传输(SCP/SFTP)
 zeek -Cr ./pcaps/scp.pcapng \
 ./test.zeek \
 ./scripts/detect_ssh_file_transfer.zeek
 
-# Unix 命令注入攻击
+# Unix命令注入攻击
 zeek -Cr ./pcaps/exploit.pcap \
 ./test.zeek \
 ./scripts/detect_http_cmd_injection.zeek

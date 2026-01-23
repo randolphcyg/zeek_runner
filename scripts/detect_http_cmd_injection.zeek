@@ -3,9 +3,9 @@
 const SCRIPT_ID = "DETECT_HTTP_CMD_INJECT_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：Unix 命令注入攻击
-# 行为分类：Web 攻击 / 命令执行
-# 行为描述：检测 HTTP URI 及 Header 中包含的 Shellshock 及常见 Unix 系统命令特征
+# 行为类型：Unix命令注入攻击
+# 行为分类：Web攻击/命令执行
+# 行为描述：检测HTTP URI及Header中包含的Shellshock及常见Unix系统命令特征
 
 @load base/frameworks/notice
 @load base/protocols/http
