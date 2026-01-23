@@ -108,7 +108,7 @@ hook Notice::policy(n: Notice::Info) {
 
 event zeek_done() {
     local log_info = TaskStatus::Info(
-        $completedTime = strftime("%Y-%m-%dT%H:%M:%S%z", current_time())
+        $completedTime = strftime("%Y-%m-%dT%H:%M:%SZ", current_time())
     );
     Log::write(TaskStatus::LOG, log_info);
 }
