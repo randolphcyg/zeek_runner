@@ -1,11 +1,11 @@
 # 脚本唯一标识符 - 不要修改此ID
 # 此ID用于在数据库中唯一标识此脚本，即使脚本内容更新也不会改变
-const SCRIPT_ID = "DETECT_HTTP_UA_FINAL_v1";
+const SCRIPT_ID = "DETECT_HTTP_UA_v1";
 
 # 恶意行为检测脚本配置
-# 行为类型：恶意 User-Agent 检测
-# 行为分类：Web 攻击 / 扫描探测
-# 行为描述：检测 HTTP 请求头中使用已知黑客工具 (Sqlmap, Nmap 等) 的 User-Agent，采用抗截断流式检测
+# 行为类型：恶意User-Agent检测
+# 行为分类：Web攻击/扫描探测
+# 行为描述：检测HTTP请求头中使用已知黑客工具(Sqlmap, Nmap等)的User-Agent，采用抗截断流式检测
 
 @load base/protocols/http
 @load base/frameworks/notice
