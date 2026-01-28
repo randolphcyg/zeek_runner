@@ -114,18 +114,43 @@ type AnalyzeResp struct {
 // 统一任务提交入口：处理并发控制和上下文传递
 func executeTaskInPool(ctx context.Context, req AnalyzeReq) (*AnalyzeResp, error) {
 	type result struct {
-		output []byte
-		err    error
+		output    []byte
+		err       error
+		startTime time.Time
 	}
 	// 缓冲设为1，防止协程超时后写入阻塞
 	resultChan := make(chan result, 1)
+	// 记录进入排队的时间
+	enqueueTime := time.Now()
 
-	// 提交任务 (ctx 闭包传递)
+	// Submit 现在会阻塞，直到池子有空位
 	err := taskPool.Submit(func() {
+		// 进入 Worker 后，先检查客户端是否已经取消/超时
+		if ctx.Err() != nil {
+			return
+		}
+
+		actualStartTime := time.Now()
+
+		// 记录实际开始处理的时间
+		queueDuration := actualStartTime.Sub(enqueueTime)
+		if queueDuration > 500*time.Millisecond {
+			// 如果排队超过 500ms，打印一条警告，说明池子可能满了
+			slog.Warn("Task queued too long",
+				"uuid", req.UUID,
+				"wait", queueDuration,
+				"pool_running", taskPool.Running(), // 当前正在运行的协程数
+			)
+		}
+
 		// 传递父级 context，确保请求断开时能终止 Zeek
 		out, e := runZeekAnalysis(ctx, req)
 		select {
-		case resultChan <- result{output: out, err: e}:
+		case resultChan <- result{
+			output:    out,
+			err:       e,
+			startTime: actualStartTime,
+		}:
 		case <-ctx.Done():
 			// 接收端已放弃，直接丢弃结果
 		}
@@ -147,20 +172,50 @@ func executeTaskInPool(ctx context.Context, req AnalyzeReq) (*AnalyzeResp, error
 		return &AnalyzeResp{
 			TaskID: req.TaskID, UUID: req.UUID,
 			PcapPath: req.PcapPath, ScriptPath: req.ScriptPath,
-			StartTime: time.Now().Format(time.RFC3339),
+			StartTime: res.startTime.Format(time.RFC3339),
 		}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
+// deriveTaskType 根据请求参数推断任务类型
+func deriveTaskType(req AnalyzeReq) string {
+	// 如果指定了提取路径，或者是提取脚本，则认为是文件提取
+	if req.ExtractedFilePath != "" || strings.Contains(req.ScriptPath, "extract") {
+		return "FILE_EXTRACT"
+	}
+	// 默认认为是恶意行为检测
+	return "MALICIOUS_SCAN"
+}
+
 func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) {
+	taskType := deriveTaskType(req)
+	pcapName := filepath.Base(req.PcapPath)
+	scriptName := filepath.Base(req.ScriptPath)
+
+	logger := slog.With(
+		slog.String("type", taskType),     // 任务类型：FILE_EXTRACT / MALICIOUS_SCAN
+		slog.String("taskID", req.TaskID), // 批次ID
+		slog.String("uuid", req.UUID),     // 唯一执行ID
+		slog.String("pcap", pcapName),     // 处理的文件名
+		slog.String("script", scriptName), // 使用的脚本
+	)
+
+	logger.Info("started")
+
+	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", req.UUID))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "create temp dir failed: %v", err)
+	}
+	defer os.RemoveAll(workDir) // 任务结束自动清理
+
 	// 基于请求 Context 派生超时 Context
 	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(config.ZeekTimeout)*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath)
-	// 设置进程组，确保超时 Kill 能清理子进程
+	cmd.Dir = workDir // 锁定工作目录
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// 注入环境变量
@@ -176,7 +231,7 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 		"EXTRACTED_FILE_MIN_SIZE": strconv.Itoa(req.ExtractedFileMinSize),
 	}
 	for k, v := range envMap {
-		if v != "" && v != "0" {
+		if v != "" {
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
@@ -185,29 +240,33 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 	// 内存保护：只保留 stderr 前 4KB，丢弃 stdout
 	var errBuf bytes.Buffer
 	cmd.Stdout = io.Discard
-	cmd.Stderr = &LimitWriter{w: &errBuf, n: 4096}
+	cmd.Stderr = &LimitWriter{w: &errBuf, n: 8192}
 
 	startTime := time.Now()
-	err := cmd.Run()
+	err = cmd.Run()
 	output := errBuf.Bytes()
+	duration := time.Since(startTime)
 
 	if err != nil {
-		// 区分是超时还是执行错误
+		// 区分超时、取消或执行错误
+		errMsg := "Zeek execution failed"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			return output, fmt.Errorf("timeout after %dm", config.ZeekTimeout)
-		}
-		// 若是上层 Cancel (如客户端断开)
-		if errors.Is(ctx.Err(), context.Canceled) {
+			errMsg = fmt.Sprintf("Timeout after %dm", config.ZeekTimeout)
+		} else if errors.Is(ctx.Err(), context.Canceled) {
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			return output, errors.New("request canceled by client")
+			errMsg = "Request canceled by client"
 		}
 
-		slog.Error("Zeek failed", "taskID", req.TaskID, "err", err, "stderr", string(output))
+		logger.Error(errMsg,
+			slog.Any("err", err),
+			slog.String("stderr", string(output)), // Zeek 的报错信息通常在这里
+			slog.Duration("duration", duration),
+		)
 		return output, err
 	}
 
-	slog.Info("Zeek finished", "taskID", req.TaskID, "duration", time.Since(startTime))
+	logger.Info("Done", slog.String("duration", duration.String()))
 	return output, nil
 }
 
@@ -218,8 +277,8 @@ func validateReq(req AnalyzeReq) error {
 	if req.PcapID == "" {
 		return errors.New("missing pcapID")
 	}
-	if req.ScriptID == "" {
-		return errors.New("missing scriptID")
+	if req.ExtractedFilePath == "" && req.ScriptID == "" {
+		return errors.New("missing scriptID (required for malicious scan)")
 	}
 	if req.PcapPath == "" || req.ScriptPath == "" {
 		return errors.New("missing paths")
@@ -232,6 +291,18 @@ func validateReq(req AnalyzeReq) error {
 	if !isFileExist(req.PcapPath) {
 		return fmt.Errorf("file not found: %s", req.PcapPath)
 	}
+
+	// 安全校验：如果包含提取路径，确保路径是绝对路径，且不包含 ..
+	if req.ExtractedFilePath != "" {
+		cleanExtract := filepath.Clean(req.ExtractedFilePath)
+		if strings.Contains(cleanExtract, "..") {
+			return errors.New("invalid extracted file path: traversal detected")
+		}
+		if !filepath.IsAbs(cleanExtract) {
+			return errors.New("extracted file path must be absolute")
+		}
+	}
+
 	return nil
 }
 
@@ -245,6 +316,11 @@ func handleAnalysis(c *gin.Context) {
 		response(c, 400, "invalid params", err)
 		return
 	}
+
+	if req.ExtractedFilePath != "" && req.ScriptID == "" {
+		req.ScriptID = "EXTRACT_TASK"
+	}
+
 	if err := validateReq(req); err != nil {
 		response(c, 400, err.Error(), nil)
 		return
@@ -274,6 +350,10 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 		PcapID: req.PcapID, PcapPath: req.PcapPath,
 		ScriptID: req.ScriptID, ScriptPath: req.ScriptPath,
 		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
+	}
+
+	if ar.ExtractedFilePath != "" && ar.ScriptID == "" {
+		ar.ScriptID = "EXTRACT_TASK"
 	}
 
 	if err := validateReq(ar); err != nil {
@@ -349,7 +429,10 @@ func main() {
 
 	// 1. 初始化协程池
 	var err error
-	taskPool, err = ants.NewPool(config.PoolSize, ants.WithNonblocking(true))
+	taskPool, err = ants.NewPool(config.PoolSize,
+		ants.WithMaxBlockingTasks(10000),
+		ants.WithNonblocking(false), // 显式声明为阻塞模式
+	)
 	if err != nil {
 		slog.Error("Pool init failed", "err", err)
 		os.Exit(1)
