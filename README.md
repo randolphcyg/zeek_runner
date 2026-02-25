@@ -21,7 +21,7 @@ https://github.com/randolphcyg/zeek-kafka/
 
 # 基础镜像
 docker pull golang:1.25-alpine --platform linux/amd64
-docker pull zeek/zeek:8.1.0 --platform linux/amd64
+docker pull zeek/zeek:8.1.1 --platform linux/amd64
 
 docker build -t zeek_runner:latest . --platform linux/amd64
 # 指定国内仓库
