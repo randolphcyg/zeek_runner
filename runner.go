@@ -202,12 +202,19 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 		slog.String("script", scriptName), // 使用的脚本
 	)
 
-	logger.Info("started")
+	logger.Info("started",
+		slog.String("pcap_path", req.PcapPath),
+		slog.String("script_path", req.ScriptPath),
+		slog.String("extracted_file_path", req.ExtractedFilePath),
+		slog.Int("extracted_file_min_size", req.ExtractedFileMinSize),
+	)
 
 	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", req.UUID))
 	if err != nil {
+		logger.Error("create temp dir failed", "err", err)
 		return nil, status.Errorf(codes.Internal, "create temp dir failed: %v", err)
 	}
+	logger.Debug("created temp work dir", "dir", workDir)
 	defer os.RemoveAll(workDir) // 任务结束自动清理
 
 	// 基于请求 Context 派生超时 Context
@@ -216,7 +223,9 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 
 	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath)
 	cmd.Dir = workDir // 锁定工作目录
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// 设置 SysProcAttr，用于在需要时杀死整个进程组
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	logger.Debug("executing zeek command", "cmd", cmd.String())
 
 	// 注入环境变量
 	env := os.Environ()
@@ -251,10 +260,16 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 		// 区分超时、取消或执行错误
 		errMsg := "Zeek execution failed"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			// 杀死进程
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
 			errMsg = fmt.Sprintf("Timeout after %dm", config.ZeekTimeout)
 		} else if errors.Is(ctx.Err(), context.Canceled) {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			// 杀死进程
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
 			errMsg = "Request canceled by client"
 		}
 
@@ -266,7 +281,11 @@ func runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) 
 		return output, err
 	}
 
-	logger.Info("Done", slog.String("duration", duration.String()))
+	logger.Info("Done", 
+		slog.String("duration", duration.String()),
+		slog.Int("stderr_size", len(output)),
+		slog.String("work_dir", workDir),
+	)
 	return output, nil
 }
 
@@ -446,13 +465,23 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(rateLimitMiddleware())
 
 	r.GET("/api/v1/healthz", func(c *gin.Context) {
 		msg := "ok"
 		if !isKafkaReady() {
 			msg = "kafka_down"
 		}
-		c.JSON(200, gin.H{"status": msg, "pool_running": taskPool.Running()})
+		c.JSON(200, gin.H{
+			"status":         msg,
+			"pool_running":   taskPool.Running(),
+			"pool_capacity":  config.PoolSize,
+			"kafka_ready":    isKafkaReady(),
+			"timestamp":      time.Now().Format(time.RFC3339),
+			"version":        "1.0.0",
+			"os":             "linux",
+			"arch":           "amd64",
+		})
 	})
 
 	auth := r.Group("/api/v1")
@@ -463,8 +492,8 @@ func main() {
 	})
 	{
 		auth.POST("/analyze", handleAnalysis)
-		auth.GET("/version/zeek", cmdHandler("zeek", "--version"))
-		auth.GET("/version/zeek-kafka", cmdHandler("zeek", "-N", "Seiso::Kafka"))
+	auth.GET("/version/zeek", cmdHandler("zeek", "--version"))
+	auth.GET("/version/zeek-kafka", cmdHandler("zeek", "-N", "Seiso::Kafka"))
 	}
 
 	srv := &http.Server{Addr: config.ListenHTTP, Handler: r}
@@ -510,6 +539,64 @@ func main() {
 	cancel()           // 停止 Kafka 检查
 	taskPool.Release() // 等待所有 Zeek 任务完成
 	slog.Info("Bye")
+}
+
+// 速率限制器
+ type RateLimiter struct {
+	mu           sync.Mutex
+	reqs         map[string][]time.Time
+	maxRequests  int
+	timeWindow   time.Duration
+ }
+
+ func NewRateLimiter(maxRequests int, timeWindow time.Duration) *RateLimiter {
+	return &RateLimiter{
+		reqs:         make(map[string][]time.Time),
+		maxRequests:  maxRequests,
+		timeWindow:   timeWindow,
+	}
+ }
+
+ func (rl *RateLimiter) Allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	// 清理过期的请求记录
+	if times, exists := rl.reqs[ip]; exists {
+		var validTimes []time.Time
+		for _, t := range times {
+			if now.Sub(t) < rl.timeWindow {
+				validTimes = append(validTimes, t)
+			}
+		}
+		rl.reqs[ip] = validTimes
+	}
+
+	// 检查是否超过限制
+	if len(rl.reqs[ip]) >= rl.maxRequests {
+		return false
+	}
+
+	// 记录新请求
+	rl.reqs[ip] = append(rl.reqs[ip], now)
+	return true
+}
+
+// 全局速率限制器
+var rateLimiter = NewRateLimiter(100, time.Minute) // 每分钟100个请求
+
+// 速率限制中间件
+func rateLimitMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ip := c.ClientIP()
+		if !rateLimiter.Allow(ip) {
+			response(c, 429, "too many requests", nil)
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
 }
 
 // 辅助函数

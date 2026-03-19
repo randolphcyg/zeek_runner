@@ -25,7 +25,62 @@ message AnalyzeResponse {
   string startTime = 5;        // 任务开始时间
 }
 
+// 健康检查请求
+message HealthCheckRequest {}
+
+// 健康检查响应
+message HealthCheckResponse {
+  string status = 1;           // 状态
+  int32 pool_running = 2;      // 运行中的协程数
+  int32 pool_capacity = 3;     // 协程池容量
+  bool kafka_ready = 4;        // Kafka 是否就绪
+  string timestamp = 5;        // 时间戳
+  string version = 6;          // 服务版本
+  string go_version = 7;       // Go 版本
+  string os = 8;               // 操作系统
+  string arch = 9;             // 架构
+}
+
+// 版本检查请求
+message VersionCheckRequest {
+  string component = 1;        // 组件名称 (zeek 或 zeek-kafka)
+}
+
+// 版本检查响应
+message VersionCheckResponse {
+  string component = 1;        // 组件名称
+  string version = 2;          // 版本信息
+}
+
+// Zeek 脚本格式请求
+message ZeekFormatRequest {
+  string script_path = 1;      // 脚本路径
+  string script_content = 2;   // 脚本内容
+}
+
+// Zeek 脚本格式响应
+message ZeekFormatResponse {
+  string formatted_content = 1; // 格式化后的内容
+  string error = 2;             // 错误信息
+}
+
+// Zeek 语法检查请求
+message ZeekSyntaxCheckRequest {
+  string script_path = 1;      // 脚本路径
+  string script_content = 2;   // 脚本内容
+}
+
+// Zeek 语法检查响应
+message ZeekSyntaxCheckResponse {
+  bool valid = 1;              // 是否有效
+  string error = 2;            // 错误信息
+}
+
 // gRPC服务定义
 service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
+  rpc VersionCheck(VersionCheckRequest) returns (VersionCheckResponse) {}
+  rpc ZeekFormat(ZeekFormatRequest) returns (ZeekFormatResponse) {}
+  rpc ZeekSyntaxCheck(ZeekSyntaxCheckRequest) returns (ZeekSyntaxCheckResponse) {}
 }
