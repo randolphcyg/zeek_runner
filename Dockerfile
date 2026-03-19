@@ -2,7 +2,7 @@
 # Global Arguments
 # ===========================
 ARG ZEEK_VER=8.1.1
-ARG GO_VER=1.25-alpine
+ARG GO_VER=1.26-alpine
 ARG ZEEK_KAFKA_VER=2.2
 ARG APT_MIRROR
 
@@ -89,4 +89,5 @@ RUN echo "@load base/custom" >> /usr/local/zeek/share/zeek/base/init-default.zee
 
 WORKDIR /app
 EXPOSE 8000
+EXPOSE 50051
 CMD ["./zeek_runner"]
