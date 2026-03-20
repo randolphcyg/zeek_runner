@@ -52,18 +52,6 @@ message VersionCheckResponse {
   string version = 2;          // 版本信息
 }
 
-// Zeek 脚本格式请求
-message ZeekFormatRequest {
-  string script_path = 1;      // 脚本路径
-  string script_content = 2;   // 脚本内容
-}
-
-// Zeek 脚本格式响应
-message ZeekFormatResponse {
-  string formatted_content = 1; // 格式化后的内容
-  string error = 2;             // 错误信息
-}
-
 // Zeek 语法检查请求
 message ZeekSyntaxCheckRequest {
   string script_path = 1;      // 脚本路径
@@ -81,6 +69,5 @@ service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
   rpc VersionCheck(VersionCheckRequest) returns (VersionCheckResponse) {}
-  rpc ZeekFormat(ZeekFormatRequest) returns (ZeekFormatResponse) {}
   rpc ZeekSyntaxCheck(ZeekSyntaxCheckRequest) returns (ZeekSyntaxCheckResponse) {}
 }
