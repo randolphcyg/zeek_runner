@@ -61,12 +61,10 @@ ENV TZ=Asia/Shanghai
 ARG APT_MIRROR
 
 RUN \
-    # 1. 配置源
     if [ -n "$APT_MIRROR" ]; then \
         sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list && \
         sed -i "s|security.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
     fi && \
-    # ... (后续保持不变) ...
     apt-get update && \
     apt-get install -y --no-install-recommends \
         libpcap0.8 \
@@ -78,7 +76,7 @@ RUN \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/* /tmp/* /var/tmp/*
 
-COPY --from=zeek-builder /usr/local/zeek /usr/local/zeek
+COPY --from=zeek-builder /usr/local/zeek/lib /usr/local/zeek/lib
 COPY --from=go-builder /app/zeek_runner /app/
 
 RUN mkdir -p /usr/local/zeek/share/zeek/base/custom
