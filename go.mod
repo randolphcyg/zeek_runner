@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/panjf2000/ants/v2 v2.11.6
+	github.com/panjf2000/ants/v2 v2.12.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/segmentio/kafka-go v0.4.50
 	google.golang.org/grpc v1.79.3
