@@ -53,6 +53,8 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 }
 
 func (s *GRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
+	LogServiceEvent("health_check")
+
 	statusMsg := "ok"
 	if !s.app.IsKafkaReady() {
 		statusMsg = "kafka_down"
@@ -82,6 +84,8 @@ func (s *GRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest
 
 func (s *GRPCServer) VersionCheck(ctx context.Context, req *pb.VersionCheckRequest) (*pb.VersionCheckResponse, error) {
 	component := req.GetComponent()
+	LogServiceEvent("version_check", "component", component)
+
 	if component != "zeek" && component != "zeek-kafka" {
 		return nil, status.Error(codes.InvalidArgument, "component must be 'zeek' or 'zeek-kafka'")
 	}

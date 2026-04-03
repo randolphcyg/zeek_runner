@@ -28,6 +28,51 @@ docker build -t zeek_runner:latest . --platform linux/amd64
 docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:latest . --platform linux/amd64
 # 容器导出
 docker save zeek_runner:latest  | gzip > zeek_runner.tar.gz
+```
+
+#### 离线部署
+
+适用于无外网的服务器环境，一键打包所有镜像和配置：
+
+```shell
+# 1. 在有网环境执行打包脚本
+chmod +x build_offline.sh
+./build_offline.sh [版本号]
+
+# 输出示例：
+# offline_package/
+# ├── zeek_runner_latest.tar.gz    # zeek_runner 镜像
+# ├── redis.tar.gz                 # Redis 镜像
+# ├── nginx.tar.gz                 # Nginx 镜像
+# ├── docker-compose.yml           # 部署配置
+# ├── nginx.conf                   # 负载均衡配置
+# ├── config.yaml                  # 服务配置示例
+# ├── deploy.sh                    # 部署脚本
+# └── uninstall.sh                 # 卸载脚本
+
+# 2. 传输到目标服务器
+scp -r offline_package user@server:/opt/zeek_runner_offline/
+
+# 3. 在目标服务器执行部署
+cd /opt/zeek_runner_offline
+./deploy.sh
+
+# 4. 编辑配置文件（设置 Redis 密码、Kafka 地址等）
+sudo vi /opt/zeek_runner/config.yaml
+
+# 5. 重启服务
+docker-compose restart
+```
+
+**离线包内容**：
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| zeek_runner_*.tar.gz | ~800MB | 服务镜像 |
+| redis.tar.gz | ~30MB | Redis 镜像 |
+| nginx.tar.gz | ~25MB | Nginx 镜像 |
+| docker-compose.yml | - | 部署配置 |
+| config.yaml | - | 服务配置 |
 # 解压镜像
 docker load -i zeek_runner.tar.gz
 ```
@@ -51,6 +96,59 @@ docker run -d \
   -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
   zeek_runner:latest
 ```
+
+#### Docker Compose 分布式部署
+
+推荐使用 Docker Compose 部署多实例，支持负载均衡和故障转移：
+
+```shell
+# 启动所有服务（Redis + 3个zeek_runner实例 + Nginx负载均衡）
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 扩展实例数量（修改 docker-compose.yml 后）
+docker-compose up -d --scale zeek_runner_1=2
+
+# 查看日志
+docker-compose logs -f zeek_runner_1
+```
+
+**架构说明**：
+
+```
+                    ┌─────────────────┐
+                    │     Nginx       │
+                    │  (负载均衡)      │
+                    │  :80 / :50050   │
+                    └────────┬────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  zeek_runner_1  │ │  zeek_runner_2  │ │  zeek_runner_3  │
+│  :8001 / :50051 │ │  :8002 / :50052 │ │  :8003 / :50053 │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │     Redis       │
+                    │   (任务队列)     │
+                    │      :6380      │
+                    └─────────────────┘
+```
+
+**访问方式**：
+
+| 服务 | 地址 |
+|------|------|
+| HTTP API (负载均衡) | `http://localhost:80` |
+| gRPC (负载均衡) | `localhost:50050` |
+| 实例1 HTTP | `http://localhost:8001` |
+| 实例2 HTTP | `http://localhost:8002` |
+| 实例3 HTTP | `http://localhost:8003` |
 
 #### 环境变量说明
 
@@ -131,6 +229,7 @@ docker run -d \
 #### 安全建议
 
 - **Redis 密码**：使用配置文件而非环境变量，避免密码泄露
+- **密码一致性**：确保 `config.yaml` 和 `docker-compose.yml` 中的 Redis 密码一致
 - **配置文件权限**：设置 `chmod 600 config.yaml` 限制访问
 - **Docker Secrets**：生产环境建议使用 Docker Secrets 或 Kubernetes Secrets
 
@@ -146,6 +245,7 @@ docker run -d \
 - 上层服务下发任务后立即返回任务ID
 - 服务后台执行任务，上层服务通过任务ID查询状态
 - 适合批量任务、长时间执行任务的场景
+- **支持分布式部署**：多个实例共享 Redis 队列
 
 ```shell
 # 启用异步模式需要配置 Redis
@@ -156,6 +256,82 @@ docker run -d \
   ... \
   zeek_runner:latest
 ```
+
+### 分布式部署
+
+服务支持多实例部署，通过 Redis 实现任务队列共享：
+
+#### 架构设计
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      上层服务                                    │
+│            (下发任务到任意实例)                                   │
+└───────────────────────┬─────────────────────────────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│   实例 A      │ │   实例 B      │ │   实例 C      │
+│  (消费者)     │ │  (消费者)     │ │  (消费者)     │
+└──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+       │                │                │
+       └────────────────┼────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Redis 任务队列                                │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  zeek:task:queue  →  [task1, task2, task3, ...]         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  zeek:task:{id}  →  {task metadata & status}            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 工作流程
+
+1. **任务提交**：任务推入 Redis 队列 (`RPUSH`)
+2. **任务抢占**：各实例通过 `BLPOP` 原子性获取任务
+3. **任务执行**：获取任务的实例执行分析
+4. **状态更新**：执行结果写入 Redis
+
+#### 部署示例
+
+```shell
+# 实例 1
+docker run -d \
+  --name zeek_runner_1 \
+  -e REDIS_ADDR="redis:6379" \
+  -e ZEEK_CONCURRENT_TASKS=8 \
+  zeek_runner:latest
+
+# 实例 2
+docker run -d \
+  --name zeek_runner_2 \
+  -e REDIS_ADDR="redis:6379" \
+  -e ZEEK_CONCURRENT_TASKS=8 \
+  zeek_runner:latest
+
+# 实例 3
+docker run -d \
+  --name zeek_runner_3 \
+  -e REDIS_ADDR="redis:6379" \
+  -e ZEEK_CONCURRENT_TASKS=8 \
+  zeek_runner:latest
+```
+
+#### 负载均衡
+
+- **自动负载均衡**：空闲实例自动从队列获取任务
+- **故障转移**：实例宕机后，任务留在队列中被其他实例处理
+- **容量扩展**：增加实例即可提升处理能力
+
+#### 注意事项
+
+1. **共享存储**：多实例需要共享 PCAP 文件和脚本目录
+2. **文件提取**：提取文件目录也需要共享或使用分布式存储
+3. **实例标识**：每个实例有唯一 ID，便于日志追踪
 
 ### 文件提取去重
 
@@ -264,6 +440,7 @@ docker exec zeek_runner kill -HUP 1
 
 #### HTTP 接口测试
 
+**单实例部署**（端口 8000）：
 ```shell
 # 健康检查（无需认证）
 curl http://localhost:8000/api/v1/healthz
@@ -273,6 +450,24 @@ curl http://localhost:8000/metrics
 
 # 调用 /api/v1/version/zeek 接口（需要 User-Agent，配置 AUTH_TOKENS 后还需 Authorization）
 curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:8000/api/v1/version/zeek
+```
+
+**分布式部署**（通过 Nginx 负载均衡，端口 80）：
+```shell
+# 健康检查
+curl http://localhost:80/api/v1/healthz
+
+# 版本检查
+curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:80/api/v1/version/zeek
+
+# 直接访问实例（调试用）
+curl http://localhost:8001/api/v1/healthz  # 实例1
+curl http://localhost:8002/api/v1/healthz  # 实例2
+curl http://localhost:8003/api/v1/healthz  # 实例3
+```
+
+**完整测试命令**（单实例）：
+```shell
 
 # 调用 /api/v1/version/zeek-kafka 接口
 curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:8000/api/v1/version/zeek-kafka
@@ -357,24 +552,42 @@ curl -X POST \
 ```shell
 # 安装 grpcurl
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+```
 
+**单实例部署**（端口 50051）：
+```shell
 # 查看服务列表
 grpcurl -plaintext localhost:50051 list
 
-# 查看服务方法
-grpcurl -plaintext localhost:50051 describe zeek_runner.ZeekAnalysisService
+# 健康检查
+grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' \
+  localhost:50051 zeek_runner.ZeekAnalysisService/HealthCheck
 
-# 健康检查（需要 user-agent）
-grpcurl -plaintext -H 'user-agent: test' localhost:50051 zeek_runner.ZeekAnalysisService/HealthCheck
+# 版本检查
+grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' \
+  -d '{"component": "zeek"}' \
+  localhost:50051 zeek_runner.ZeekAnalysisService/VersionCheck
+```
 
-# 如果配置了 AUTH_TOKENS，需要携带 authorization 头
-grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' localhost:50051 zeek_runner.ZeekAnalysisService/HealthCheck
+**分布式部署**（通过 Nginx 负载均衡，端口 50050）：
+```shell
+# 健康检查（负载均衡）
+grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' \
+  localhost:50050 zeek_runner.ZeekAnalysisService/HealthCheck
 
-# 版本检查 - zeek
-grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{"component": "zeek"}' localhost:50051 zeek_runner.ZeekAnalysisService/VersionCheck
+# 版本检查（负载均衡）
+grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' \
+  -d '{"component": "zeek"}' \
+  localhost:50050 zeek_runner.ZeekAnalysisService/VersionCheck
 
-# 版本检查 - zeek-kafka
-grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{"component": "zeek-kafka"}' localhost:50051 zeek_runner.ZeekAnalysisService/VersionCheck
+# 直接访问实例（调试用）
+grpcurl -plaintext localhost:50051 list  # 实例1
+grpcurl -plaintext localhost:50052 list  # 实例2
+grpcurl -plaintext localhost:50053 list  # 实例3
+```
+
+**完整测试命令**（单实例）：
+```shell
 
 # 调用 zeek 分析 pcap
 grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
@@ -484,6 +697,141 @@ func main() {
 }
 ```
 
+#### 批量测试脚本
+
+创建批量测试脚本验证负载均衡和分布式处理：
+
+```shell
+# 创建测试脚本 test_batch.sh
+cat > test_batch.sh << 'EOF'
+#!/bin/bash
+
+TOKEN="token-dpi"
+HTTP_URL="http://localhost:80"
+GRPC_URL="localhost:50050"
+
+echo "=== 批量测试 HTTP 接口 ==="
+for i in {1..10}; do
+  curl -s -X POST \
+    -H "Content-Type: application/json" \
+    -H "User-Agent: test" \
+    -H "Authorization: $TOKEN" \
+    -d "{
+      \"pcapPath\": \"/opt/zeek_runner/pcaps/sshguess.pcap\",
+      \"scriptPath\": \"/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
+      \"onlyNotice\": true,
+      \"taskID\": \"test-$i\",
+      \"uuid\": \"uuid-$i\",
+      \"pcapID\": \"pcap-$i\",
+      \"scriptID\": \"script-$i\"
+    }" \
+    "$HTTP_URL/api/v1/analyze/async" &
+done
+wait
+echo "HTTP 批量测试完成"
+
+echo ""
+echo "=== 批量测试 gRPC 接口 ==="
+for i in {1..10}; do
+  grpcurl -plaintext \
+    -H 'user-agent: test' \
+    -H "authorization: $TOKEN" \
+    -d "{
+      \"taskID\": \"grpc-test-$i\",
+      \"uuid\": \"grpc-uuid-$i\",
+      \"onlyNotice\": true,
+      \"pcapPath\": \"/opt/zeek_runner/pcaps/sshguess.pcap\",
+      \"scriptPath\": \"/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
+      \"pcapID\": \"pcap-$i\",
+      \"scriptID\": \"script-$i\"
+    }" \
+    "$GRPC_URL" zeek_runner.ZeekAnalysisService/AsyncAnalyze &
+done
+wait
+echo "gRPC 批量测试完成"
+
+echo ""
+echo "=== 查看任务状态 ==="
+docker-compose logs --tail=50 zeek_runner_1 zeek_runner_2 zeek_runner_3 | grep -E "task|instance"
+EOF
+
+chmod +x test_batch.sh
+./test_batch.sh
+```
+
+**观察负载均衡效果**：
+
+```shell
+# 查看各实例日志，确认任务被分配到不同实例
+docker-compose logs -f zeek_runner_1 zeek_runner_2 zeek_runner_3
+
+# 输出示例：
+# zeek_runner_1 | {"level":"INFO","msg":"task","event":"started","taskID":"test-1","instance":"zeek_runner_1-1234"}
+# zeek_runner_2 | {"level":"INFO","msg":"task","event":"started","taskID":"test-2","instance":"zeek_runner_2-5678"}
+# zeek_runner_3 | {"level":"INFO","msg":"task","event":"started","taskID":"test-3","instance":"zeek_runner_3-9012"}
+```
+
+#### 多副本性能验证
+
+使用性能测试脚本验证多副本对并发任务的帮助：
+
+```shell
+# 运行性能测试
+chmod +x test_performance.sh
+./test_performance.sh
+```
+
+**测试输出示例**：
+
+```
+==========================================
+   多副本并发性能测试
+==========================================
+
+=== 提交 20 个异步任务 ===
+任务提交完成，耗时: 2 秒
+
+=== 各实例处理的任务数 ===
+zeek_runner_1: 7 个任务
+zeek_runner_2: 6 个任务
+zeek_runner_3: 7 个任务
+总计: 20 个任务已开始处理
+
+=== 各实例完成的任务数 ===
+zeek_runner_1: 7 个任务
+zeek_runner_2: 6 个任务
+zeek_runner_3: 7 个任务
+总计: 20 个任务已完成
+
+=== 多副本效果验证 ===
+✅ zeek_runner_1 处理了 7 个任务
+✅ zeek_runner_2 处理了 6 个任务
+✅ zeek_runner_3 处理了 7 个任务
+
+✅ 多副本生效！3 个实例参与处理任务
+
+优势说明：
+  - 任务被均匀分配到多个实例
+  - 单实例故障不影响整体服务
+  - 可通过增加实例提升处理能力
+```
+
+**多副本优势对比**：
+
+| 场景 | 单实例 | 3副本 |
+|------|--------|-------|
+| 并发任务数 | 8 (受限于 PoolSize) | 24 (3×8) |
+| 故障恢复 | 服务中断 | 自动转移 |
+| 处理能力 | 1x | ~3x |
+| 扩展方式 | 升级配置 | 增加实例 |
+
+**关键指标**：
+
+1. **任务分布**：任务被均匀分配到各实例
+2. **处理速度**：总处理时间显著缩短
+3. **资源利用**：各实例 CPU/内存均衡使用
+4. **容错能力**：单实例宕机不影响服务
+
 ### 直接使用本机zeek测试
 ```shell
 ##### 测试 kafka 消息、环境变量取值、二次开发zeek-kafka组件功能是否生效
@@ -555,7 +903,9 @@ curl -X POST \
     "pcapPath": "/opt/zeek_runner/file_extract_scripts/xxx.pcap",
     "scriptPath": "/opt/zeek_runner/file_extract_scripts/extract_http.zeek",
     "uuid": "233",
-    "taskID": "122"
+    "taskID": "122",
+    "pcapID": "pcap-001",
+    "scriptID": "script-001"
   }' \
   http://localhost:8000/api/v1/analyze
 ```

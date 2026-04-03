@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,9 +89,8 @@ func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*Analy
 		actualStartTime := time.Now()
 		queueDuration := actualStartTime.Sub(enqueueTime)
 		if queueDuration > 500*time.Millisecond {
-			slog.Warn("Task queued too long",
-				"uuid", req.UUID,
-				"wait", queueDuration,
+			LogTaskEvent("queue_wait", req.TaskID, req.UUID,
+				"wait_ms", queueDuration.Milliseconds(),
 				"pool_running", s.pool.Running(),
 			)
 		}
@@ -146,24 +144,16 @@ func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, e
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
-	cfg := s.getConfig()
-	err = s.pool.Submit(func() {
-		s.executeAsyncTask(context.Background(), task.TaskID, req, cfg.ZeekTimeout)
-	})
-
-	if err != nil {
-		if errors.Is(err, ants.ErrPoolOverload) {
-			s.taskManager.SetFailed(ctx, task.TaskID, "task pool full")
-			RecordTask("rejected", 0)
-			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.PoolSize)
-		}
-		s.taskManager.SetFailed(ctx, task.TaskID, err.Error())
-		RecordTask("error", 0)
-		return nil, status.Errorf(codes.Internal, "submit failed: %v", err)
+	if err := s.taskManager.EnqueueTask(ctx, task.TaskID); err != nil {
+		s.taskManager.SetFailed(ctx, task.TaskID, "failed to enqueue")
+		return nil, fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
-	s.taskManager.SetRunning(ctx, task.TaskID)
-	RecordTask("submitted", 0)
+	LogTaskEvent("submitted", task.TaskID, task.UUID,
+		"status", "queued",
+	)
+
+	RecordTask("queued", 0)
 	return task, nil
 }
 
@@ -198,33 +188,116 @@ func (s *Service) GetTaskStatus(ctx context.Context, taskID string) (*Task, erro
 	return s.taskManager.GetTask(ctx, taskID)
 }
 
+func (s *Service) StartTaskConsumer(ctx context.Context) {
+	if s.taskManager == nil {
+		LogServiceEvent("consumer_skip", "reason", "no_task_manager")
+		return
+	}
+
+	LogServiceEvent("consumer_started",
+		"pool_size", s.getConfig().PoolSize,
+	)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				LogServiceEvent("consumer_stopped")
+				return
+			default:
+				taskID, err := s.taskManager.DequeueTask(ctx, 5*time.Second)
+				if err != nil {
+					LogServiceError("dequeue_failed", err)
+					time.Sleep(time.Second)
+					continue
+				}
+
+				if taskID == "" {
+					continue
+				}
+
+				s.processQueuedTask(ctx, taskID)
+			}
+		}
+	}()
+}
+
+func (s *Service) processQueuedTask(ctx context.Context, taskID string) {
+	task, err := s.taskManager.GetTask(ctx, taskID)
+	if err != nil {
+		LogTaskError("fetch_failed", taskID, "", err)
+		return
+	}
+
+	if task.Status != TaskStatusPending {
+		LogTaskEvent("skip_processed", taskID, task.UUID,
+			"status", task.Status,
+		)
+		return
+	}
+
+	req := AnalyzeReq{
+		TaskID:               task.TaskID,
+		UUID:                 task.UUID,
+		PcapID:               task.PcapID,
+		PcapPath:             task.PcapPath,
+		ScriptID:             task.ScriptID,
+		ScriptPath:           task.ScriptPath,
+		OnlyNotice:           task.OnlyNotice,
+		ExtractedFilePath:    task.ExtractedFilePath,
+		ExtractedFileMinSize: task.ExtractedFileMinSize,
+	}
+
+	cfg := s.getConfig()
+	err = s.pool.Submit(func() {
+		s.executeAsyncTask(context.Background(), taskID, req, cfg.ZeekTimeout)
+	})
+
+	if err != nil {
+		if errors.Is(err, ants.ErrPoolOverload) {
+			s.taskManager.SetFailed(ctx, taskID, "task pool full")
+			if canRetry, _ := s.taskManager.CanRetry(ctx, taskID); canRetry {
+				s.taskManager.IncrementRetry(ctx, taskID)
+				s.taskManager.EnqueueTask(ctx, taskID)
+				LogTaskEvent("requeue", taskID, task.UUID,
+					"reason", "pool_full",
+					"retries", task.Retries+1,
+				)
+			}
+			RecordTask("rejected", 0)
+		} else {
+			s.taskManager.SetFailed(ctx, taskID, err.Error())
+			RecordTask("error", 0)
+		}
+		return
+	}
+
+	s.taskManager.SetRunning(ctx, taskID)
+	LogTaskEvent("started", taskID, task.UUID,
+		"pcap", filepath.Base(task.PcapPath),
+		"script", filepath.Base(task.ScriptPath),
+	)
+	RecordTask("started", 0)
+}
+
 func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) {
 	cfg := s.getConfig()
 	taskType := deriveTaskType(req)
 	pcapName := filepath.Base(req.PcapPath)
 	scriptName := filepath.Base(req.ScriptPath)
 
-	logger := slog.With(
-		slog.String("type", taskType),
-		slog.String("taskID", req.TaskID),
-		slog.String("uuid", req.UUID),
-		slog.String("pcap", pcapName),
-		slog.String("script", scriptName),
-	)
-
-	logger.Info("started",
-		slog.String("pcap_path", req.PcapPath),
-		slog.String("script_path", req.ScriptPath),
-		slog.String("extracted_file_path", req.ExtractedFilePath),
-		slog.Int("extracted_file_min_size", req.ExtractedFileMinSize),
+	LogTaskEvent("zeek_start", req.TaskID, req.UUID,
+		"type", taskType,
+		"pcap", pcapName,
+		"script", scriptName,
+		"timeout_min", cfg.ZeekTimeout,
 	)
 
 	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", req.UUID))
 	if err != nil {
-		logger.Error("create temp dir failed", "err", err)
+		LogTaskError("temp_dir_failed", req.TaskID, req.UUID, err)
 		return nil, status.Errorf(codes.Internal, "create temp dir failed: %v", err)
 	}
-	logger.Debug("created temp work dir", "dir", workDir)
 	defer os.RemoveAll(workDir)
 
 	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(cfg.ZeekTimeout)*time.Minute)
@@ -233,7 +306,6 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath)
 	cmd.Dir = workDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	logger.Debug("executing zeek command", "cmd", cmd.String())
 
 	env := os.Environ()
 	envMap := map[string]string{
@@ -263,31 +335,30 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 	duration := time.Since(startTime)
 
 	if err != nil {
-		errMsg := "Zeek execution failed"
+		errMsg := "zeek_failed"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			if cmd.Process != nil {
 				_ = cmd.Process.Kill()
 			}
-			errMsg = fmt.Sprintf("Timeout after %dm", cfg.ZeekTimeout)
+			errMsg = "timeout"
 		} else if errors.Is(ctx.Err(), context.Canceled) {
 			if cmd.Process != nil {
 				_ = cmd.Process.Kill()
 			}
-			errMsg = "Request canceled by client"
+			errMsg = "canceled"
 		}
 
-		logger.Error(errMsg,
-			slog.Any("err", err),
-			slog.String("stderr", string(output)),
-			slog.Duration("duration", duration),
+		LogTaskError(errMsg, req.TaskID, req.UUID, err,
+			"duration_ms", duration.Milliseconds(),
+			"stderr_size", len(output),
 		)
 		return output, err
 	}
 
-	logger.Info("Done",
-		slog.String("duration", duration.String()),
-		slog.Int("stderr_size", len(output)),
-		slog.String("work_dir", workDir),
+	LogTaskEvent("zeek_done", req.TaskID, req.UUID,
+		"duration_ms", duration.Milliseconds(),
+		"stderr_size", len(output),
+		"type", taskType,
 	)
 
 	if taskType == "FILE_EXTRACT" && s.fileDedupMgr != nil && req.ExtractedFilePath != "" {
@@ -308,7 +379,7 @@ func (s *Service) processExtractedFiles(ctx context.Context, req AnalyzeReq) {
 	extractDir := req.ExtractedFilePath
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
-		slog.Warn("failed to read extracted files directory", "dir", extractDir, "err", err)
+		LogTaskError("read_dir_failed", req.TaskID, req.UUID, err, "dir", extractDir)
 		return
 	}
 
@@ -320,19 +391,19 @@ func (s *Service) processExtractedFiles(ctx context.Context, req AnalyzeReq) {
 		filePath := filepath.Join(extractDir, entry.Name())
 		record, isDuplicate, err := s.fileDedupMgr.ProcessExtractedFile(ctx, filePath, req.PcapPath, req.TaskID)
 		if err != nil {
-			slog.Warn("failed to process extracted file", "file", filePath, "err", err)
+			LogTaskError("process_file_failed", req.TaskID, req.UUID, err, "file", entry.Name())
 			continue
 		}
 
 		if isDuplicate {
-			slog.Info("duplicate file removed",
+			LogTaskEvent("file_dedup", req.TaskID, req.UUID,
 				"file", entry.Name(),
 				"hash", record.Hash[:16],
-				"original", record.FilePath,
-				"refCount", record.RefCount,
+				"action", "skipped",
+				"ref_count", record.RefCount,
 			)
 		} else {
-			slog.Info("new file registered",
+			LogTaskEvent("file_saved", req.TaskID, req.UUID,
 				"file", entry.Name(),
 				"hash", record.Hash[:16],
 				"size", record.FileSize,

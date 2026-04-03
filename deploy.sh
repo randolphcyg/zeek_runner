@@ -1,29 +1,49 @@
 #!/bin/bash
 
-# 设置环境变量
-export ZEEK_WORKERS=4
-export ZEEK_PACKET_QUEUE_SIZE=50000
-export ZEEK_TIMEOUT_MINUTES=10
-export ZEEK_MEMORY_LIMIT=2048
-export ZEEK_WORKER_MEMORY_LIMIT=512
+set -e
 
-# 构建 Docker 镜像
-#docker build -t zeek_runner:2.2 .
+echo "=== Zeek Runner 部署脚本 ==="
+echo ""
 
-# 停止并删除旧容器（如果存在）
-docker stop zeek_runner || true
-docker rm zeek_runner || true
+if [ "$1" = "compose" ]; then
+    echo "使用 Docker Compose 部署..."
+    docker-compose up -d
+    echo ""
+    echo "=== 服务状态 ==="
+    docker-compose ps
+    echo ""
+    echo "=== 访问地址 ==="
+    echo "HTTP API (负载均衡): http://localhost:80"
+    echo "gRPC (负载均衡): localhost:50050"
+    echo "Redis: localhost:6380"
+else
+    echo "单实例部署..."
+    
+    if [ ! -f config.yaml ]; then
+        echo "错误: config.yaml 不存在"
+        echo "请复制 config.example.yaml 并修改配置"
+        exit 1
+    fi
+    
+    docker run -d \
+        --name zeek_runner \
+        -p 8000:8000 \
+        -p 50051:50051 \
+        -v $(pwd)/pcaps:/opt/zeek_runner/pcaps \
+        -v $(pwd)/scripts:/opt/zeek_runner/scripts \
+        -v $(pwd)/extracted:/opt/zeek_runner/extracted \
+        -v $(pwd)/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
+        -v $(pwd)/config.yaml:/opt/zeek_runner/config.yaml:ro \
+        zeek_runner:latest
+    
+    echo ""
+    echo "=== 服务状态 ==="
+    docker ps | grep zeek_runner
+    echo ""
+    echo "=== 访问地址 ==="
+    echo "HTTP API: http://localhost:8000"
+    echo "gRPC: localhost:50051"
+fi
 
-# 启动新容器
-docker run -d \
-    --name zeek_runner \
-    -p 8000:8000 \
-    -p 50051:50051 \
-    -e KAFKA_BROKERS="192.168.11.186:9092" \
-    -v /Users/randolph/go/netflow:/Users/randolph/go/netflow \
-    -v /Users/randolph/go/malicious_behavior:/Users/randolph/go/malicious_behavior \
-    -v /Users/randolph/goodjob/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
-    zeek_runner:2.2
-
-# 检查容器状态
-docker ps | grep zeek_runner 
+echo ""
+echo "=== 部署完成 ==="

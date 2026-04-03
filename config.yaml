@@ -1,6 +1,6 @@
 redis:
   addr: "redis:6379"
-  password: "change-me-in-production"
+  password: "zeek_redis_1949"
   db: 0
 
 kafka:
@@ -18,7 +18,9 @@ rateLimit:
 
 auth:
   tokens:
-    - "your-token-here"
+    - "token-service-1"    # 服务1
+    - "token-service-2"    # 服务2
+    - "token-service-3"    # 服务3
 
 server:
   http: ":8000"
