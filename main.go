@@ -33,7 +33,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	app.Start(ctx)
 
-	service := NewService(app.TaskPool, app.ConfigManager)
+	service := NewService(app.TaskPool, app.ConfigManager, app.TaskManager, app.FileDedupMgr)
 	httpHandler := NewHTTPHandler(service, app)
 	grpcServer := NewGRPCServer(service, app)
 
@@ -66,6 +66,8 @@ func main() {
 	})
 	{
 		auth.POST("/analyze", httpHandler.HandleAnalysis)
+		auth.POST("/analyze/async", httpHandler.HandleAsyncAnalysis)
+		auth.GET("/task/:taskID", httpHandler.HandleTaskStatus)
 		auth.GET("/version/zeek", httpHandler.CmdHandler("zeek", "--version"))
 		auth.GET("/version/zeek-kafka", httpHandler.CmdHandler("zeek", "-N", "Seiso::Kafka"))
 		auth.POST("/syntax-check", httpHandler.HandleSyntaxCheck)

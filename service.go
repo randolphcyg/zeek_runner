@@ -60,10 +60,12 @@ type AnalyzeResp struct {
 type Service struct {
 	pool          *ants.Pool
 	configManager *ConfigManager
+	taskManager   *TaskManager
+	fileDedupMgr  *FileDedupManager
 }
 
-func NewService(pool *ants.Pool, cm *ConfigManager) *Service {
-	return &Service{pool: pool, configManager: cm}
+func NewService(pool *ants.Pool, cm *ConfigManager, tm *TaskManager, fdm *FileDedupManager) *Service {
+	return &Service{pool: pool, configManager: cm, taskManager: tm, fileDedupMgr: fdm}
 }
 
 func (s *Service) getConfig() *Config {
@@ -132,6 +134,68 @@ func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*Analy
 		RecordTask("canceled", time.Since(enqueueTime).Seconds())
 		return nil, ctx.Err()
 	}
+}
+
+func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, error) {
+	if s.taskManager == nil {
+		return nil, errors.New("task manager not initialized, Redis required")
+	}
+
+	task, err := s.taskManager.CreateTask(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task: %w", err)
+	}
+
+	cfg := s.getConfig()
+	err = s.pool.Submit(func() {
+		s.executeAsyncTask(context.Background(), task.TaskID, req, cfg.ZeekTimeout)
+	})
+
+	if err != nil {
+		if errors.Is(err, ants.ErrPoolOverload) {
+			s.taskManager.SetFailed(ctx, task.TaskID, "task pool full")
+			RecordTask("rejected", 0)
+			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.PoolSize)
+		}
+		s.taskManager.SetFailed(ctx, task.TaskID, err.Error())
+		RecordTask("error", 0)
+		return nil, status.Errorf(codes.Internal, "submit failed: %v", err)
+	}
+
+	s.taskManager.SetRunning(ctx, task.TaskID)
+	RecordTask("submitted", 0)
+	return task, nil
+}
+
+func (s *Service) executeAsyncTask(ctx context.Context, taskID string, req AnalyzeReq, timeout int) {
+	taskCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Minute)
+	defer cancel()
+
+	output, err := s.runZeekAnalysis(taskCtx, req)
+
+	if err != nil {
+		if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
+			s.taskManager.SetTimeout(ctx, taskID)
+			RecordTask("timeout", 0)
+		} else if errors.Is(taskCtx.Err(), context.Canceled) {
+			s.taskManager.SetFailed(ctx, taskID, "canceled")
+			RecordTask("canceled", 0)
+		} else {
+			s.taskManager.SetFailed(ctx, taskID, err.Error())
+			RecordTask("failed", 0)
+		}
+		return
+	}
+
+	s.taskManager.SetSuccess(ctx, taskID, string(output))
+	RecordTask("success", 0)
+}
+
+func (s *Service) GetTaskStatus(ctx context.Context, taskID string) (*Task, error) {
+	if s.taskManager == nil {
+		return nil, errors.New("task manager not initialized")
+	}
+	return s.taskManager.GetTask(ctx, taskID)
 }
 
 func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) {
@@ -225,6 +289,11 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 		slog.Int("stderr_size", len(output)),
 		slog.String("work_dir", workDir),
 	)
+
+	if taskType == "FILE_EXTRACT" && s.fileDedupMgr != nil && req.ExtractedFilePath != "" {
+		s.processExtractedFiles(ctx, req)
+	}
+
 	return output, nil
 }
 
@@ -233,6 +302,43 @@ func deriveTaskType(req AnalyzeReq) string {
 		return "FILE_EXTRACT"
 	}
 	return "MALICIOUS_SCAN"
+}
+
+func (s *Service) processExtractedFiles(ctx context.Context, req AnalyzeReq) {
+	extractDir := req.ExtractedFilePath
+	entries, err := os.ReadDir(extractDir)
+	if err != nil {
+		slog.Warn("failed to read extracted files directory", "dir", extractDir, "err", err)
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		filePath := filepath.Join(extractDir, entry.Name())
+		record, isDuplicate, err := s.fileDedupMgr.ProcessExtractedFile(ctx, filePath, req.PcapPath, req.TaskID)
+		if err != nil {
+			slog.Warn("failed to process extracted file", "file", filePath, "err", err)
+			continue
+		}
+
+		if isDuplicate {
+			slog.Info("duplicate file removed",
+				"file", entry.Name(),
+				"hash", record.Hash[:16],
+				"original", record.FilePath,
+				"refCount", record.RefCount,
+			)
+		} else {
+			slog.Info("new file registered",
+				"file", entry.Name(),
+				"hash", record.Hash[:16],
+				"size", record.FileSize,
+			)
+		}
+	}
 }
 
 func validateReq(req AnalyzeReq) error {

@@ -15,6 +15,8 @@ type App struct {
 	TaskPool      *ants.Pool
 	RateLimiter   *RateLimiter
 	KafkaChecker  *KafkaChecker
+	TaskManager   *TaskManager
+	FileDedupMgr  *FileDedupManager
 
 	kafkaReady    bool
 	kafkaReadyMux sync.RWMutex
@@ -35,11 +37,33 @@ func NewApp() (*App, error) {
 	rl := NewRateLimiter(cfg.RateLimit, time.Duration(cfg.RateLimitWindow)*time.Second)
 	slog.Info("rate limiter initialized", "limit", cfg.RateLimit, "window_seconds", cfg.RateLimitWindow)
 
+	var taskManager *TaskManager
+	var fileDedupMgr *FileDedupManager
+	if cfg.RedisAddr != "" {
+		taskManager = NewTaskManager(cfg.RedisAddr)
+		if err := taskManager.HealthCheck(context.Background()); err != nil {
+			slog.Warn("Redis connection failed, task persistence disabled", "err", err)
+			taskManager = nil
+		} else {
+			slog.Info("Task manager initialized", "redis_addr", cfg.RedisAddr)
+
+			fileDedupMgr = NewFileDedupManager(cfg.RedisAddr)
+			if err := fileDedupMgr.HealthCheck(context.Background()); err != nil {
+				slog.Warn("File dedup manager health check failed", "err", err)
+				fileDedupMgr = nil
+			} else {
+				slog.Info("File dedup manager initialized")
+			}
+		}
+	}
+
 	app := &App{
 		ConfigManager: cm,
 		Config:        cfg,
 		TaskPool:      pool,
 		RateLimiter:   rl,
+		TaskManager:   taskManager,
+		FileDedupMgr:  fileDedupMgr,
 	}
 
 	if cfg.KafkaBrokers != "" {
@@ -78,6 +102,14 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	a.RateLimiter.Stop()
 	a.TaskPool.Release()
+
+	if a.TaskManager != nil {
+		a.TaskManager.Close()
+	}
+
+	if a.FileDedupMgr != nil {
+		a.FileDedupMgr.Close()
+	}
 
 	slog.Info("Bye")
 	return nil

@@ -14,6 +14,7 @@ type Config struct {
 	PoolSize        int
 	ZeekTimeout     int
 	KafkaBrokers    string
+	RedisAddr       string
 	ListenHTTP      string
 	ListenGRPC      string
 	RateLimit       int
@@ -82,6 +83,7 @@ func loadConfig() *Config {
 		PoolSize:        getEnvInt("ZEEK_CONCURRENT_TASKS", 8),
 		ZeekTimeout:     getEnvInt("ZEEK_TIMEOUT_MINUTES", 5),
 		KafkaBrokers:    os.Getenv("KAFKA_BROKERS"),
+		RedisAddr:       getEnvString("REDIS_ADDR", "localhost:6379"),
 		ListenHTTP:      ":8000",
 		ListenGRPC:      ":50051",
 		RateLimit:       getEnvInt("RATE_LIMIT", 1000),
@@ -93,6 +95,13 @@ func loadConfig() *Config {
 
 func getEnvInt(key string, defaultVal int) int {
 	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
+		return v
+	}
+	return defaultVal
+}
+
+func getEnvString(key string, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return defaultVal

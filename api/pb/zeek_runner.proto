@@ -30,15 +30,16 @@ message HealthCheckRequest {}
 
 // 健康检查响应
 message HealthCheckResponse {
-  string status = 1;           // 状态
-  int32 pool_running = 2;      // 运行中的协程数
-  int32 pool_capacity = 3;     // 协程池容量
-  bool kafka_ready = 4;        // Kafka 是否就绪
-  string timestamp = 5;        // 时间戳
-  string version = 6;          // 服务版本
-  string go_version = 7;       // Go 版本
-  string os = 8;               // 操作系统
-  string arch = 9;             // 架构
+  string status = 1;
+  int32 pool_running = 2;
+  int32 pool_capacity = 3;
+  bool kafka_ready = 4;
+  string timestamp = 5;
+  string version = 6;
+  string go_version = 7;
+  string os = 8;
+  string arch = 9;
+  bool redis_ready = 10;
 }
 
 // 版本检查请求
@@ -64,9 +65,55 @@ message ZeekSyntaxCheckResponse {
   string error = 2;            // 错误信息
 }
 
+// 异步分析请求
+message AsyncAnalyzeRequest {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  bool onlyNotice = 3;         // 是否只生成notice日志
+  string pcapID = 4;           // pcap文件ID
+  string pcapPath = 5;         // pcap文件路径
+  string scriptID = 6;         // 脚本ID
+  string scriptPath = 7;       // 脚本路径
+  string extractedFilePath = 8;// 提取文件存储路径
+  int32 extractedFileMinSize = 9;// 提取文件最小大小(KB)
+}
+
+// 异步分析响应
+message AsyncAnalyzeResponse {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  string status = 3;           // 任务状态
+  string createTime = 4;       // 创建时间
+}
+
+// 任务状态查询请求
+message TaskStatusRequest {
+  string taskID = 1;           // 任务ID
+}
+
+// 任务状态查询响应
+message TaskStatusResponse {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  string pcapID = 3;           // pcap文件ID
+  string pcapPath = 4;         // pcap文件路径
+  string scriptID = 5;         // 脚本ID
+  string scriptPath = 6;       // 脚本路径
+  string status = 7;           // 任务状态
+  string createTime = 8;       // 创建时间
+  string startTime = 9;        // 开始时间
+  string endTime = 10;         // 结束时间
+  double duration = 11;        // 执行时长(秒)
+  string error = 12;           // 错误信息
+  string output = 13;          // 输出内容
+  int32 retries = 14;          // 重试次数
+}
+
 // gRPC服务定义
 service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
+  rpc AsyncAnalyze(AsyncAnalyzeRequest) returns (AsyncAnalyzeResponse) {}
+  rpc GetTaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
   rpc VersionCheck(VersionCheckRequest) returns (VersionCheckResponse) {}
   rpc ZeekSyntaxCheck(ZeekSyntaxCheckRequest) returns (ZeekSyntaxCheckResponse) {}

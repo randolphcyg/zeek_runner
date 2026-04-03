@@ -50,6 +50,59 @@ func (h *HTTPHandler) HandleAnalysis(c *gin.Context) {
 	success(c, resp)
 }
 
+func (h *HTTPHandler) HandleAsyncAnalysis(c *gin.Context) {
+	var req AnalyzeReq
+	if err := c.BindJSON(&req); err != nil {
+		response(c, http.StatusBadRequest, "invalid params", err)
+		return
+	}
+
+	if req.ExtractedFilePath != "" && req.ScriptID == "" {
+		req.ScriptID = "EXTRACT_TASK"
+	}
+
+	if err := validateReq(req); err != nil {
+		response(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	task, err := h.service.SubmitAsyncTask(c.Request.Context(), req)
+	if err != nil {
+		code := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "pool full") {
+			code = http.StatusServiceUnavailable
+		}
+		if strings.Contains(err.Error(), "Redis required") {
+			code = http.StatusServiceUnavailable
+		}
+		response(c, code, err.Error(), err)
+		return
+	}
+
+	success(c, gin.H{
+		"taskID":     task.TaskID,
+		"uuid":       task.UUID,
+		"status":     task.Status,
+		"createTime": task.CreateTime.Format(time.RFC3339),
+	})
+}
+
+func (h *HTTPHandler) HandleTaskStatus(c *gin.Context) {
+	taskID := c.Param("taskID")
+	if taskID == "" {
+		response(c, http.StatusBadRequest, "taskID required", nil)
+		return
+	}
+
+	task, err := h.service.GetTaskStatus(c.Request.Context(), taskID)
+	if err != nil {
+		response(c, http.StatusNotFound, "task not found", err)
+		return
+	}
+
+	success(c, task)
+}
+
 type SyntaxCheckReq struct {
 	ScriptPath    string `json:"scriptPath"`
 	ScriptContent string `json:"scriptContent"`
@@ -147,11 +200,20 @@ func (h *HTTPHandler) Healthz(c *gin.Context) {
 		msg = "kafka_down"
 	}
 	cfg := h.app.ConfigManager.Get()
+
+	redisReady := h.app.TaskManager != nil
+	if redisReady {
+		if err := h.app.TaskManager.HealthCheck(c.Request.Context()); err != nil {
+			redisReady = false
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status":        msg,
 		"pool_running":  h.app.TaskPool.Running(),
 		"pool_capacity": cfg.PoolSize,
 		"kafka_ready":   h.app.IsKafkaReady(),
+		"redis_ready":   redisReady,
 		"timestamp":     time.Now().Format(time.RFC3339),
 		"version":       "1.0.0",
 		"os":            "linux",
