@@ -223,6 +223,9 @@ func (h *HTTPHandler) Healthz(c *gin.Context) {
 
 func response(c *gin.Context, code int, msg string, err error) {
 	if err != nil {
+		clientIP := c.ClientIP()
+		requestID, _ := c.Get("request_id")
+		LogHTTPError(c.Request.Method, c.Request.URL.Path, clientIP, code, 0, requestID.(string), err)
 		c.JSON(code, gin.H{"code": code, "msg": msg, "error": err.Error()})
 	} else {
 		c.JSON(code, gin.H{"code": code, "msg": msg})

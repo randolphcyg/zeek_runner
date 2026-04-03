@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -45,7 +46,9 @@ type Task struct {
 type TaskManager struct {
 	redis      *redis.Client
 	prefix     string
+	queueKey   string
 	expiration time.Duration
+	instanceID string
 }
 
 func NewTaskManager(redisAddr, redisPassword string, redisDB int) *TaskManager {
@@ -56,11 +59,20 @@ func NewTaskManager(redisAddr, redisPassword string, redisDB int) *TaskManager {
 		PoolSize: 10,
 	})
 
+	instanceID := generateInstanceID()
+
 	return &TaskManager{
 		redis:      rdb,
 		prefix:     "zeek:task:",
+		queueKey:   "zeek:task:queue",
 		expiration: 24 * time.Hour,
+		instanceID: instanceID,
 	}
+}
+
+func generateInstanceID() string {
+	hostname, _ := os.Hostname()
+	return fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano()%10000)
 }
 
 func (tm *TaskManager) key(taskID string) string {
@@ -234,4 +246,51 @@ func (tm *TaskManager) HealthCheck(ctx context.Context) error {
 
 func (tm *TaskManager) Close() error {
 	return tm.redis.Close()
+}
+
+func (tm *TaskManager) EnqueueTask(ctx context.Context, taskID string) error {
+	err := tm.redis.RPush(ctx, tm.queueKey, taskID).Err()
+	if err != nil {
+		return fmt.Errorf("failed to enqueue task: %w", err)
+	}
+	slog.Debug("task enqueued", "taskID", taskID, "instance", tm.instanceID)
+	return nil
+}
+
+func (tm *TaskManager) DequeueTask(ctx context.Context, timeout time.Duration) (string, error) {
+	result, err := tm.redis.BLPop(ctx, timeout, tm.queueKey).Result()
+	if err == redis.Nil {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to dequeue task: %w", err)
+	}
+
+	if len(result) < 2 {
+		return "", fmt.Errorf("invalid dequeue result")
+	}
+
+	taskID := result[1]
+	slog.Debug("task dequeued", "taskID", taskID, "instance", tm.instanceID)
+	return taskID, nil
+}
+
+func (tm *TaskManager) GetQueueLength(ctx context.Context) (int64, error) {
+	return tm.redis.LLen(ctx, tm.queueKey).Result()
+}
+
+func (tm *TaskManager) AssignTask(ctx context.Context, taskID string) error {
+	task, err := tm.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	task.Status = TaskStatusRunning
+	task.StartTime = time.Now()
+
+	return tm.saveTask(ctx, task)
+}
+
+func (tm *TaskManager) GetInstanceID() string {
+	return tm.instanceID
 }

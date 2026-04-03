@@ -1,13 +1,106 @@
 services:
-  zeek_runner:
-    image: zeek_runner:latest
-    container_name: zeek_runner
+  redis:
+    image: redis:8-alpine
+    container_name: zeek_redis
     restart: unless-stopped
     ports:
-      - "8000:8000"
-    environment:
-      - KAFKA_BROKERS=192.168.12.224:9092
+      - "6380:6379"
     volumes:
-      - /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps
-      - /opt/zeek_runner/scripts:/opt/zeek_runner/scripts
-      - /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-zeek_redis_1949}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-zeek_redis_1949}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zeek_runner_1:
+    image: zeek_runner:latest
+    container_name: zeek_runner_1
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
+      - "50051:50051"
+    volumes:
+      - ./pcaps:/opt/zeek_runner/pcaps
+      - ./scripts:/opt/zeek_runner/scripts
+      - ./extracted:/opt/zeek_runner/extracted
+      - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
+      - ./config.yaml:/opt/zeek_runner/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  zeek_runner_2:
+    image: zeek_runner:latest
+    container_name: zeek_runner_2
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8002:8000"
+      - "50052:50051"
+    volumes:
+      - ./pcaps:/opt/zeek_runner/pcaps
+      - ./scripts:/opt/zeek_runner/scripts
+      - ./extracted:/opt/zeek_runner/extracted
+      - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
+      - ./config.yaml:/opt/zeek_runner/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  zeek_runner_3:
+    image: zeek_runner:latest
+    container_name: zeek_runner_3
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8003:8000"
+      - "50053:50051"
+    volumes:
+      - ./pcaps:/opt/zeek_runner/pcaps
+      - ./scripts:/opt/zeek_runner/scripts
+      - ./extracted:/opt/zeek_runner/extracted
+      - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
+      - ./config.yaml:/opt/zeek_runner/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: zeek_nginx
+    restart: unless-stopped
+    depends_on:
+      - zeek_runner_1
+      - zeek_runner_2
+      - zeek_runner_3
+    ports:
+      - "80:80"
+      - "50050:50050"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis_data:

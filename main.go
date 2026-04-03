@@ -19,18 +19,22 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-
 	app, err := NewApp()
 	if err != nil {
 		slog.Error("Failed to create app", "err", err)
 		os.Exit(1)
 	}
 
+	instanceID := GetInstanceIDFromTaskManager(app.TaskManager)
+	InitLogger(instanceID)
+
+	LogStartupInfo(instanceID, app.Config)
+
 	metricsCollector := NewMetricsCollector(app)
 	metricsCollector.Register()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	ctx = ContextWithInstance(ctx, instanceID)
 	app.Start(ctx)
 
 	service := NewService(app.TaskPool, app.ConfigManager, app.TaskManager, app.FileDedupMgr)

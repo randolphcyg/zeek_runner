@@ -17,6 +17,7 @@ type App struct {
 	KafkaChecker  *KafkaChecker
 	TaskManager   *TaskManager
 	FileDedupMgr  *FileDedupManager
+	Service       *Service
 
 	kafkaReady    bool
 	kafkaReadyMux sync.RWMutex
@@ -64,6 +65,7 @@ func NewApp() (*App, error) {
 		RateLimiter:   rl,
 		TaskManager:   taskManager,
 		FileDedupMgr:  fileDedupMgr,
+		Service:       NewService(pool, cm, taskManager, fileDedupMgr),
 	}
 
 	if cfg.KafkaBrokers != "" {
@@ -94,6 +96,10 @@ func (a *App) IsKafkaReady() bool {
 func (a *App) Start(ctx context.Context) {
 	if a.KafkaChecker != nil {
 		go a.KafkaChecker.Start(ctx, a.SetKafkaReady)
+	}
+
+	if a.Service != nil {
+		a.Service.StartTaskConsumer(ctx)
 	}
 }
 
