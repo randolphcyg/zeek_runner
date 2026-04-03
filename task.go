@@ -48,10 +48,11 @@ type TaskManager struct {
 	expiration time.Duration
 }
 
-func NewTaskManager(redisAddr string) *TaskManager {
+func NewTaskManager(redisAddr, redisPassword string, redisDB int) *TaskManager {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
-		DB:       0,
+		Password: redisPassword,
+		DB:       redisDB,
 		PoolSize: 10,
 	})
 
