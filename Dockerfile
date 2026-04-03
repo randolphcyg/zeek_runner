@@ -47,14 +47,18 @@ RUN \
 FROM golang:${GO_VER} AS go-builder
 WORKDIR /app
 
+ENV GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
+ENV GOSUMDB=off
+ENV GOMODCACHE=/go/pkg/mod
+
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download || go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o zeek_runner .
 
 # ==========================================
-# Stage 3: Runtime (Final)
+# Stage 3: Runtime
 # ==========================================
 FROM zeek/zeek:${ZEEK_VER}
 ENV TZ=Asia/Shanghai
@@ -66,7 +70,6 @@ RUN \
         sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list && \
         sed -i "s|security.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
     fi && \
-    # ... (后续保持不变) ...
     apt-get update && \
     apt-get install -y --no-install-recommends \
         libpcap0.8 \

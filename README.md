@@ -59,9 +59,117 @@ docker run -d \
 | `ZEEK_CONCURRENT_TASKS` | 8    | 并发任务数                      |
 | `ZEEK_TIMEOUT_MINUTES`  | 5    | 任务超时时间（分钟）                 |
 | `KAFKA_BROKERS`         | -    | Kafka 地址                   |
+| `REDIS_ADDR`            | localhost:6379 | Redis 地址（异步任务必需） |
 | `RATE_LIMIT`            | 1000 | 限流请求数（每时间窗口）               |
 | `RATE_LIMIT_WINDOW`     | 60   | 限流时间窗口（秒）                  |
 | `AUTH_TOKENS`           | -    | 认证 Token 列表（逗号分隔），为空则不启用认证 |
+
+### 异步任务模式
+
+服务支持两种任务执行模式：
+
+#### 同步模式（默认）
+- 上层服务下发任务后等待执行完成
+- 适合实时性要求高、任务执行时间短的场景
+
+#### 异步模式（需要 Redis）
+- 上层服务下发任务后立即返回任务ID
+- 服务后台执行任务，上层服务通过任务ID查询状态
+- 适合批量任务、长时间执行任务的场景
+
+```shell
+# 启用异步模式需要配置 Redis
+docker run -d \
+  --name zeek_runner \
+  -e REDIS_ADDR="redis:6379" \
+  -e KAFKA_BROKERS="192.168.2.6:9092" \
+  ... \
+  zeek_runner:latest
+```
+
+### 文件提取去重
+
+服务采用**双层去重架构**，最大化节省存储和 IO：
+
+#### 架构设计
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Zeek 层（任务内去重）                                            │
+│  • 同一任务内相同 hash 文件只提取一次                               │
+│  • 后续重复文件跳过提取，只记录元数据到 Kafka                        │
+│  • 输出日志：DUPLICATE_IN_TASK: hash=xxx count=2                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Go 层（跨任务去重，需要 Redis）                                   │
+│  • 不同任务间相同 hash 文件只保留一份                               │
+│  • 删除重复文件，更新 Redis 引用计数                                │
+│  • 输出日志：duplicate file removed hash=xxx refCount=3          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 工作流程
+
+**Zeek 层（任务内）**：
+1. 文件开始提取时计算 SHA256 哈希
+2. 检查任务内哈希表是否已存在
+3. 如果存在：跳过提取，记录 `DUPLICATE_IN_TASK` 日志
+4. 如果不存在：提取文件，注册哈希到任务表
+
+**Go 层（跨任务）**：
+1. Zeek 任务完成后，扫描提取目录
+2. 计算每个文件的 SHA256 哈希
+3. 查询 Redis 检查哈希是否已存在
+4. 如果存在：删除文件，增加引用计数
+5. 如果不存在：注册新文件到 Redis
+
+#### 优势对比
+
+| 场景 | 无去重 | Zeek 层去重 | 双层去重 |
+|------|--------|-------------|----------|
+| 任务内 100 次相同文件 | 提取 100 个 | 提取 1 个 | 提取 1 个 |
+| 跨任务 10 次相同文件 | 提取 10 个 | 提取 10 个 | 提取 1 个 |
+| 存储 IO | 100% | 1% | 1% |
+| 持久化存储 | 100% | 100% | 1% |
+
+#### 日志示例
+
+```
+# Zeek 层日志
+FILE_EXTRACTED: file=malware.exe size=1024000 hash=abc123... mime=application/x-dosexec
+DUPLICATE_IN_TASK: hash=abc123... task=task-001 count=2 existing=/path/malware.exe
+TASK_SUMMARY: task=task-001 unique_files=5 total_duplicates=95
+
+# Go 层日志
+new file registered: file=malware.exe hash=abc123... size=1024000
+duplicate file removed: file=malware.exe hash=abc123... original=/path/malware.exe refCount=2
+```
+
+#### 前置服务消费 Kafka
+
+前置服务消费 Kafka 时可根据 hash 字段判断：
+
+```json
+{
+  "ts": 1712138400.0,
+  "id": {
+    "orig_h": "192.168.1.100",
+    "resp_h": "10.0.0.1"
+  },
+  "fuid": "Fabc123",
+  "file": {
+    "extracted": "/path/to/file.exe",
+    "sha256": "abc123def456...",
+    "mime_type": "application/x-dosexec"
+  }
+}
+```
+
+**处理逻辑**：
+1. 检查 `file.extracted` 是否以 `DUPLICATE:` 开头
+2. 如果是重复文件，使用 hash 查询已存在的文件路径
+3. 如果是新文件，正常处理并记录 hash
 
 ### 配置热更新
 
@@ -114,6 +222,26 @@ curl -X POST \
     "scriptID": "script-001"
   }' \
   http://localhost:8000/api/v1/analyze
+
+# 异步分析接口（需要 Redis）- 立即返回任务ID
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: test" \
+  -H "Authorization: your-token" \
+  -d '{
+    "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
+    "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
+    "onlyNotice": true,
+    "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
+    "taskID": "2333",
+    "pcapID": "pcap-001",
+    "scriptID": "script-001"
+  }' \
+  http://localhost:8000/api/v1/analyze/async
+
+# 查询任务状态
+curl -H "User-Agent: test" -H "Authorization: your-token" \
+  http://localhost:8000/api/v1/task/2333
   
 # 所有日志除notice
 curl -X POST \
@@ -188,6 +316,22 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "scriptID": "script-001",
   "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/Analyze
+
+# 异步分析接口（需要 Redis）- 立即返回任务ID
+grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
+  "taskID": "2334",
+  "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
+  "onlyNotice": true,
+  "pcapID": "pcap-001",
+  "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
+  "scriptID": "script-001",
+  "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
+}' localhost:50051 zeek_runner.ZeekAnalysisService/AsyncAnalyze
+
+# 查询任务状态
+grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
+  "taskID": "2334"
+}' localhost:50051 zeek_runner.ZeekAnalysisService/GetTaskStatus
 
 # Zeek 脚本语法检查 - 通过文件路径
 grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
