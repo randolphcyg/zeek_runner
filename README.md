@@ -59,10 +59,80 @@ docker run -d \
 | `ZEEK_CONCURRENT_TASKS` | 8    | 并发任务数                      |
 | `ZEEK_TIMEOUT_MINUTES`  | 5    | 任务超时时间（分钟）                 |
 | `KAFKA_BROKERS`         | -    | Kafka 地址                   |
-| `REDIS_ADDR`            | localhost:6379 | Redis 地址（异步任务必需） |
+| `REDIS_ADDR`            | -    | Redis 地址（异步任务必需） |
+| `REDIS_PASSWORD`        | -    | Redis 密码                   |
+| `REDIS_DB`              | 0    | Redis 数据库编号               |
 | `RATE_LIMIT`            | 1000 | 限流请求数（每时间窗口）               |
 | `RATE_LIMIT_WINDOW`     | 60   | 限流时间窗口（秒）                  |
 | `AUTH_TOKENS`           | -    | 认证 Token 列表（逗号分隔），为空则不启用认证 |
+| `CONFIG_FILE`           | -    | 配置文件路径（优先级高于环境变量） |
+
+### 配置文件
+
+支持 YAML 格式配置文件，**优先级高于环境变量**，适合生产环境部署：
+
+#### 配置文件示例
+
+```yaml
+redis:
+  addr: "redis:6379"
+  password: "your-secure-password"
+  db: 0
+
+kafka:
+  brokers: "192.168.2.6:9092"
+
+pool:
+  size: 16
+  timeoutMinutes: 10
+
+rateLimit:
+  limit: 2000
+  window: 60
+
+auth:
+  tokens:
+    - "token1-change-me"
+    - "token2-change-me"
+
+server:
+  http: ":8000"
+  grpc: ":50051"
+```
+
+#### 使用配置文件
+
+```shell
+# 方式一：通过环境变量指定配置文件路径
+docker run -d \
+  --name zeek_runner \
+  -e CONFIG_FILE="/opt/zeek_runner/config.yaml" \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml \
+  zeek_runner:latest
+
+# 方式二：使用默认路径（自动检测）
+# 服务会按顺序检测以下路径：
+# 1. /etc/zeek_runner/config.yaml
+# 2. /opt/zeek_runner/config.yaml
+# 3. ./config.yaml
+# 4. ./config/config.yaml
+docker run -d \
+  --name zeek_runner \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml \
+  zeek_runner:latest
+```
+
+#### 配置优先级
+
+```
+配置文件 > 环境变量 > 默认值
+```
+
+#### 安全建议
+
+- **Redis 密码**：使用配置文件而非环境变量，避免密码泄露
+- **配置文件权限**：设置 `chmod 600 config.yaml` 限制访问
+- **Docker Secrets**：生产环境建议使用 Docker Secrets 或 Kubernetes Secrets
 
 ### 异步任务模式
 

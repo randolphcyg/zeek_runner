@@ -40,14 +40,14 @@ func NewApp() (*App, error) {
 	var taskManager *TaskManager
 	var fileDedupMgr *FileDedupManager
 	if cfg.RedisAddr != "" {
-		taskManager = NewTaskManager(cfg.RedisAddr)
+		taskManager = NewTaskManager(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 		if err := taskManager.HealthCheck(context.Background()); err != nil {
 			slog.Warn("Redis connection failed, task persistence disabled", "err", err)
 			taskManager = nil
 		} else {
 			slog.Info("Task manager initialized", "redis_addr", cfg.RedisAddr)
 
-			fileDedupMgr = NewFileDedupManager(cfg.RedisAddr)
+			fileDedupMgr = NewFileDedupManager(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB+1)
 			if err := fileDedupMgr.HealthCheck(context.Background()); err != nil {
 				slog.Warn("File dedup manager health check failed", "err", err)
 				fileDedupMgr = nil

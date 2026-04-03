@@ -33,10 +33,11 @@ type FileDedupManager struct {
 	expiration time.Duration
 }
 
-func NewFileDedupManager(redisAddr string) *FileDedupManager {
+func NewFileDedupManager(redisAddr, redisPassword string, redisDB int) *FileDedupManager {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
-		DB:       1,
+		Password: redisPassword,
+		DB:       redisDB,
 		PoolSize: 10,
 	})
 
