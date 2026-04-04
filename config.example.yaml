@@ -1,7 +1,7 @@
 redis:
   addr: "redis:6379"
   password: "change-me-in-production"
-  db: 0
+  db: 2
 
 kafka:
   brokers: "192.168.1.12:9092"
@@ -16,13 +16,23 @@ rateLimit:
   limit: 2000
   window: 60
 
-auth:
-  tokens:
+http:
+  host: "0.0.0.0"
+  port: 8000
+  timeout: "60s"
+  authTokens:
     - "your-token-here"
 
-server:
-  http: ":8000"
-  grpc: ":50051"
+grpc:
+  host: "0.0.0.0"
+  port: 50051
+  timeout: "300s"
+  maxRecvMsgSize: 16777216
+  maxSendMsgSize: 16777216
+  enableReflection: true
+  enableHealthCheck: true
+  authTokens:
+    - "your-token-here"
 
 file:
   extractPath: "/opt/zeek_runner/extracted"

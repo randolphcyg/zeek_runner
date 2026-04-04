@@ -68,6 +68,7 @@ func TestConfigManager_AuthTokens(t *testing.T) {
 
 func TestConfig_Defaults(t *testing.T) {
 	os.Clearenv()
+	os.Setenv("CONFIG_FILE", "/nonexistent/config.yaml")
 
 	cm := NewConfigManager()
 	cfg := cm.Get()

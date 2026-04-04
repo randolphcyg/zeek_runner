@@ -1,7 +1,7 @@
 redis:
   addr: "redis:6379"
   password: "zeek_redis_1949"
-  db: 0
+  db: 2
 
 kafka:
   brokers: "192.168.1.12:9092"
@@ -16,15 +16,27 @@ rateLimit:
   limit: 2000
   window: 60
 
-auth:
-  tokens:
-    - "token-service-1"    # 服务1
-    - "token-service-2"    # 服务2
-    - "token-service-3"    # 服务3
+http:
+  host: "0.0.0.0"
+  port: 8000
+  timeout: "60s"
+  authTokens:
+    - "token-service-1"
+    - "token-service-2"
+    - "token-service-3"
 
-server:
-  http: ":8000"
-  grpc: ":50051"
+grpc:
+  host: "0.0.0.0"
+  port: 50051
+  timeout: "300s"
+  maxRecvMsgSize: 16777216
+  maxSendMsgSize: 16777216
+  enableReflection: true
+  enableHealthCheck: true
+  authTokens:
+    - "token-service-1"
+    - "token-service-2"
+    - "token-service-3"
 
 file:
   extractPath: "/opt/zeek_runner/extracted"

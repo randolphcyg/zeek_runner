@@ -118,7 +118,14 @@ func LogStartupInfo(instanceID string, cfg *Config) {
 		"redis_addr", cfg.RedisAddr,
 		"kafka_brokers", cfg.KafkaBrokers,
 		"http_addr", cfg.ListenHTTP,
+		"http_timeout", cfg.HTTPTimeout.String(),
 		"grpc_addr", cfg.ListenGRPC,
+		"grpc_timeout", cfg.GRPCTimeout.String(),
+		"grpc_max_recv_msg_size", cfg.GRPCMaxRecvMsgSize,
+		"grpc_max_send_msg_size", cfg.GRPCMaxSendMsgSize,
+		"grpc_enable_reflection", cfg.GRPCEnableReflection,
+		"grpc_enable_health_check", cfg.GRPCEnableHealthCheck,
+		"auth_tokens_count", len(cfg.AuthTokens),
 	)
 }
 

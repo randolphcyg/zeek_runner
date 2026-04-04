@@ -14,7 +14,6 @@ import (
 	"zeek_runner/api/pb"
 
 	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -86,11 +85,15 @@ func main() {
 		}
 	}()
 
-	grpcSrv := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			grpcRateLimitInterceptor(app.RateLimiter),
-			grpcAuthInterceptorWithManager(app.ConfigManager),
-		),
+	grpcSrv := NewGRPCServerWithOptions(
+		app.Config.GRPCMaxRecvMsgSize,
+		app.Config.GRPCMaxSendMsgSize,
+		app.Config.GRPCEnableReflection,
+		grpcRecoveryInterceptor(),
+		grpcRateLimitInterceptor(app.RateLimiter),
+		grpcTimeoutInterceptor(app.Config.GRPCTimeout),
+		grpcAuthInterceptorWithManager(app.ConfigManager),
+		grpcLoggingInterceptor(),
 	)
 	go func() {
 		lis, err := net.Listen("tcp", app.Config.ListenGRPC)
@@ -99,7 +102,9 @@ func main() {
 			return
 		}
 		pb.RegisterZeekAnalysisServiceServer(grpcSrv, grpcServer)
-		reflection.Register(grpcSrv)
+		if app.Config.GRPCEnableReflection {
+			reflection.Register(grpcSrv)
+		}
 		slog.Info("gRPC started", "addr", app.Config.ListenGRPC)
 		if err := grpcSrv.Serve(lis); err != nil {
 			slog.Error("gRPC error", "err", err)
