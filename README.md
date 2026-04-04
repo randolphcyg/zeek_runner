@@ -80,21 +80,66 @@ docker load -i zeek_runner.tar.gz
 #### 运行
 
 ```shell
+# 使用配置文件启动（推荐）
+docker run -d \
+  --name zeek_runner \
+  -p 8000:8000 \
+  -p 50051:50051 \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
+  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
+  --log-driver json-file \
+  --log-opt max-size=100m \
+  --log-opt max-file=3 \
+  zeek_runner:latest
+
+# 使用环境变量启动（不推荐，建议使用配置文件）
 docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
   -e KAFKA_BROKERS="192.168.2.6:9092" \
-  -e ZEEK_CONCURRENT_TASKS=16 \
-  -e ZEEK_TIMEOUT_MINUTES=10 \
-  -e RATE_LIMIT=2000 \
-  -e RATE_LIMIT_WINDOW=60 \
   -e AUTH_TOKENS="token1,token2" \
   -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
   -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /path/for/save/extracted/files:/path/for/save/extracted/files \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
   -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
   zeek_runner:latest
+```
+
+#### 日志配置
+
+服务使用 `slog` 输出 JSON 格式日志到标准输出（stdout），Docker 自动收集并支持轮转：
+
+```shell
+# 日志轮转配置
+--log-driver json-file \
+--log-opt max-size=100m   # 单个日志文件最大 100MB
+--log-opt max-file=3      # 保留最近 3 个日志文件
+
+# 查看实时日志
+docker logs -f zeek_runner
+
+# 查看最近 100 行日志
+docker logs --tail 100 zeek_runner
+
+# 查看指定时间范围的日志
+docker logs --since 2024-01-01T00:00:00 zeek_runner
+```
+
+**日志格式示例**：
+```json
+{
+  "time": "2024-01-01T12:00:00.000Z",
+  "level": "INFO",
+  "msg": "service_started",
+  "instance": "abc123-4567",
+  "event": "startup",
+  "http_addr": ":8000",
+  "grpc_addr": ":50051"
+}
 ```
 
 #### Docker Compose 分布式部署
@@ -162,6 +207,16 @@ docker-compose logs -f zeek_runner_1
 | `REDIS_DB`              | 0    | Redis 数据库编号               |
 | `RATE_LIMIT`            | 1000 | 限流请求数（每时间窗口）               |
 | `RATE_LIMIT_WINDOW`     | 60   | 限流时间窗口（秒）                  |
+| `HTTP_HOST`             | `0.0.0.0` | HTTP 服务绑定地址 |
+| `LISTEN_HTTP`           | `:8000` | HTTP 服务监听地址 |
+| `HTTP_TIMEOUT`          | `60s` | HTTP 请求超时时间 |
+| `GRPC_HOST`             | `0.0.0.0` | gRPC 服务绑定地址 |
+| `LISTEN_GRPC`           | `:50051` | gRPC 服务监听地址 |
+| `GRPC_TIMEOUT`          | `300s` | gRPC 请求超时时间 |
+| `GRPC_MAX_RECV_MSG_SIZE` | `16777216` | gRPC 最大接收消息大小（字节） |
+| `GRPC_MAX_SEND_MSG_SIZE` | `16777216` | gRPC 最大发送消息大小（字节） |
+| `GRPC_ENABLE_REFLECTION` | `true` | 启用 gRPC 反射服务 |
+| `GRPC_ENABLE_HEALTH_CHECK` | `true` | 启用 gRPC 健康检查 |
 | `AUTH_TOKENS`           | -    | 认证 Token 列表（逗号分隔），为空则不启用认证 |
 | `CONFIG_FILE`           | -    | 配置文件路径（优先级高于环境变量） |
 
@@ -179,24 +234,81 @@ redis:
 
 kafka:
   brokers: "192.168.2.6:9092"
+  topic: "zeek_logs"
 
 pool:
   size: 16
+  maxBlocking: 10000
   timeoutMinutes: 10
 
 rateLimit:
   limit: 2000
   window: 60
 
-auth:
-  tokens:
+http:
+  host: "0.0.0.0"
+  port: 8000
+  timeout: "60s"
+  authTokens:
     - "token1-change-me"
     - "token2-change-me"
 
-server:
-  http: ":8000"
-  grpc: ":50051"
+grpc:
+  host: "0.0.0.0"
+  port: 50051
+  timeout: "300s"
+  maxRecvMsgSize: 16777216    # 16MB
+  maxSendMsgSize: 16777216    # 16MB
+  enableReflection: true      # 启用 gRPC 反射服务
+  enableHealthCheck: true     # 启用健康检查
+  authTokens:
+    - "token1-change-me"
+    - "token2-change-me"
+
+file:
+  extractPath: "/opt/zeek_runner/extracted"
+  minSizeKB: 20
 ```
+
+#### 配置参数说明
+
+##### HTTP 配置
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `host` | string | `0.0.0.0` | HTTP 服务绑定地址 |
+| `port` | int | `8000` | HTTP 服务端口 |
+| `timeout` | string | `60s` | 请求超时时间 |
+| `authTokens` | []string | `[]` | 认证 Token 列表，为空则不启用认证 |
+
+##### gRPC 配置
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `host` | string | `0.0.0.0` | gRPC 服务绑定地址 |
+| `port` | int | `50051` | gRPC 服务端口 |
+| `timeout` | string | `300s` | 请求超时时间 |
+| `maxRecvMsgSize` | int | `16777216` | 最大接收消息大小（字节），默认 16MB |
+| `maxSendMsgSize` | int | `16777216` | 最大发送消息大小（字节），默认 16MB |
+| `enableReflection` | bool | `true` | 启用 gRPC 反射服务（grpcurl 调试用） |
+| `enableHealthCheck` | bool | `true` | 启用健康检查 |
+| `authTokens` | []string | `[]` | 认证 Token 列表，为空则不启用认证 |
+
+##### 环境变量对照表
+
+| 环境变量 | 配置文件路径 | 说明 |
+|---------|-------------|------|
+| `HTTP_HOST` | `http.host` | HTTP 绑定地址 |
+| `LISTEN_HTTP` | `http.port` | HTTP 端口 |
+| `HTTP_TIMEOUT` | `http.timeout` | HTTP 超时 |
+| `AUTH_TOKENS` | `http.authTokens` | HTTP 认证 Token |
+| `GRPC_HOST` | `grpc.host` | gRPC 绑定地址 |
+| `LISTEN_GRPC` | `grpc.port` | gRPC 端口 |
+| `GRPC_TIMEOUT` | `grpc.timeout` | gRPC 超时 |
+| `GRPC_MAX_RECV_MSG_SIZE` | `grpc.maxRecvMsgSize` | gRPC 最大接收消息大小 |
+| `GRPC_MAX_SEND_MSG_SIZE` | `grpc.maxSendMsgSize` | gRPC 最大发送消息大小 |
+| `GRPC_ENABLE_REFLECTION` | `grpc.enableReflection` | gRPC 反射服务开关 |
+| `GRPC_ENABLE_HEALTH_CHECK` | `grpc.enableHealthCheck` | gRPC 健康检查开关 |
 
 #### 使用配置文件
 
@@ -204,8 +316,13 @@ server:
 # 方式一：通过环境变量指定配置文件路径
 docker run -d \
   --name zeek_runner \
+  -p 8000:8000 \
+  -p 50051:50051 \
   -e CONFIG_FILE="/opt/zeek_runner/config.yaml" \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
+  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
   zeek_runner:latest
 
 # 方式二：使用默认路径（自动检测）
@@ -216,7 +333,12 @@ docker run -d \
 # 4. ./config/config.yaml
 docker run -d \
   --name zeek_runner \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml \
+  -p 8000:8000 \
+  -p 50051:50051 \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
+  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
   zeek_runner:latest
 ```
 
@@ -248,12 +370,15 @@ docker run -d \
 - **支持分布式部署**：多个实例共享 Redis 队列
 
 ```shell
-# 启用异步模式需要配置 Redis
+# 启用异步模式需要配置 Redis（在 config.yaml 中配置）
 docker run -d \
   --name zeek_runner \
-  -e REDIS_ADDR="redis:6379" \
-  -e KAFKA_BROKERS="192.168.2.6:9092" \
-  ... \
+  -p 8000:8000 \
+  -p 50051:50051 \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
+  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
   zeek_runner:latest
 ```
 
@@ -298,26 +423,42 @@ docker run -d \
 
 #### 部署示例
 
+推荐使用 Docker Compose 部署，详见 `docker-compose.yml`。
+
+手动部署多实例：
+
 ```shell
 # 实例 1
 docker run -d \
   --name zeek_runner_1 \
-  -e REDIS_ADDR="redis:6379" \
-  -e ZEEK_CONCURRENT_TASKS=8 \
+  -p 8001:8000 \
+  -p 50051:50051 \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
+  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
   zeek_runner:latest
 
 # 实例 2
 docker run -d \
   --name zeek_runner_2 \
-  -e REDIS_ADDR="redis:6379" \
-  -e ZEEK_CONCURRENT_TASKS=8 \
+  -p 8002:8000 \
+  -p 50052:50051 \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
+  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
   zeek_runner:latest
 
 # 实例 3
 docker run -d \
   --name zeek_runner_3 \
-  -e REDIS_ADDR="redis:6379" \
-  -e ZEEK_CONCURRENT_TASKS=8 \
+  -p 8003:8000 \
+  -p 50053:50051 \
+  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
+  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
   zeek_runner:latest
 ```
 

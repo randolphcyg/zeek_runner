@@ -30,12 +30,21 @@ var (
 		},
 		[]string{"method", "path", "status"},
 	)
+
+	grpcRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "grpc_requests_total",
+			Help: "Total number of gRPC requests",
+		},
+		[]string{"method", "code"},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(tasksTotal)
 	prometheus.MustRegister(taskDuration)
 	prometheus.MustRegister(requestsTotal)
+	prometheus.MustRegister(grpcRequestsTotal)
 }
 
 func RecordTask(status string, durationSeconds float64) {
@@ -45,6 +54,10 @@ func RecordTask(status string, durationSeconds float64) {
 
 func RecordRequest(method, path, status string) {
 	requestsTotal.WithLabelValues(method, path, status).Inc()
+}
+
+func RecordGRPCRequest(method, code string) {
+	grpcRequestsTotal.WithLabelValues(method, code).Inc()
 }
 
 func prometheusHandler() gin.HandlerFunc {

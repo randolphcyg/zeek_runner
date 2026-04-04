@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 type Config struct {
@@ -20,10 +21,19 @@ type Config struct {
 	RedisDB         int
 	ListenHTTP      string
 	ListenGRPC      string
+	HTTPHost        string
+	GRPCHost        string
+	HTTPTimeout     time.Duration
+	GRPCTimeout     time.Duration
 	RateLimit       int
 	RateLimitWindow int
 	AuthTokens      []string
 	AuthTokenMap    map[string]bool
+
+	GRPCMaxRecvMsgSize    int
+	GRPCMaxSendMsgSize    int
+	GRPCEnableReflection  bool
+	GRPCEnableHealthCheck bool
 }
 
 type ConfigManager struct {
@@ -85,18 +95,26 @@ func loadConfig() *Config {
 	}
 
 	cfg := &Config{
-		PoolSize:        getEnvInt("ZEEK_CONCURRENT_TASKS", 8),
-		ZeekTimeout:     getEnvInt("ZEEK_TIMEOUT_MINUTES", 5),
-		KafkaBrokers:    os.Getenv("KAFKA_BROKERS"),
-		RedisAddr:       getEnvString("REDIS_ADDR", ""),
-		RedisPassword:   os.Getenv("REDIS_PASSWORD"),
-		RedisDB:         getEnvInt("REDIS_DB", 0),
-		ListenHTTP:      getEnvString("LISTEN_HTTP", ":8000"),
-		ListenGRPC:      getEnvString("LISTEN_GRPC", ":50051"),
-		RateLimit:       getEnvInt("RATE_LIMIT", 1000),
-		RateLimitWindow: getEnvInt("RATE_LIMIT_WINDOW", 60),
-		AuthTokens:      authTokens,
-		AuthTokenMap:    authTokenMap,
+		PoolSize:              getEnvInt("ZEEK_CONCURRENT_TASKS", 8),
+		ZeekTimeout:           getEnvInt("ZEEK_TIMEOUT_MINUTES", 5),
+		KafkaBrokers:          os.Getenv("KAFKA_BROKERS"),
+		RedisAddr:             getEnvString("REDIS_ADDR", ""),
+		RedisPassword:         os.Getenv("REDIS_PASSWORD"),
+		RedisDB:               getEnvInt("REDIS_DB", 0),
+		ListenHTTP:            getEnvString("LISTEN_HTTP", ":8000"),
+		ListenGRPC:            getEnvString("LISTEN_GRPC", ":50051"),
+		HTTPHost:              getEnvString("HTTP_HOST", "0.0.0.0"),
+		GRPCHost:              getEnvString("GRPC_HOST", "0.0.0.0"),
+		HTTPTimeout:           getEnvDuration("HTTP_TIMEOUT", 60*time.Second),
+		GRPCTimeout:           getEnvDuration("GRPC_TIMEOUT", 300*time.Second),
+		RateLimit:             getEnvInt("RATE_LIMIT", 1000),
+		RateLimitWindow:       getEnvInt("RATE_LIMIT_WINDOW", 60),
+		AuthTokens:            authTokens,
+		AuthTokenMap:          authTokenMap,
+		GRPCMaxRecvMsgSize:    getEnvInt("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
+		GRPCMaxSendMsgSize:    getEnvInt("GRPC_MAX_SEND_MSG_SIZE", 16*1024*1024),
+		GRPCEnableReflection:  getEnvBool("GRPC_ENABLE_REFLECTION", true),
+		GRPCEnableHealthCheck: getEnvBool("GRPC_ENABLE_HEALTH_CHECK", true),
 	}
 
 	configPath := GetConfigPath()
@@ -126,6 +144,22 @@ func getEnvInt(key string, defaultVal int) int {
 func getEnvString(key string, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return defaultVal
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return defaultVal
+}
+
+func getEnvBool(key string, defaultVal bool) bool {
+	if v := os.Getenv(key); v != "" {
+		return strings.ToLower(v) == "true" || v == "1"
 	}
 	return defaultVal
 }

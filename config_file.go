@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -31,13 +32,22 @@ type RateLimitConfig struct {
 	Window int `yaml:"window"`
 }
 
-type AuthConfig struct {
-	Tokens []string `yaml:"tokens"`
+type HTTPConfig struct {
+	Host       string   `yaml:"host"`
+	Port       int      `yaml:"port"`
+	Timeout    string   `yaml:"timeout"`
+	AuthTokens []string `yaml:"authTokens"`
 }
 
-type ServerConfig struct {
-	HTTP string `yaml:"http"`
-	GRPC string `yaml:"grpc"`
+type GRPCConfig struct {
+	Host              string   `yaml:"host"`
+	Port              int      `yaml:"port"`
+	Timeout           string   `yaml:"timeout"`
+	MaxRecvMsgSize    int      `yaml:"maxRecvMsgSize"`
+	MaxSendMsgSize    int      `yaml:"maxSendMsgSize"`
+	EnableReflection  bool     `yaml:"enableReflection"`
+	EnableHealthCheck bool     `yaml:"enableHealthCheck"`
+	AuthTokens        []string `yaml:"authTokens"`
 }
 
 type FileConfig struct {
@@ -50,8 +60,8 @@ type ConfigFile struct {
 	Kafka     KafkaConfig     `yaml:"kafka"`
 	Pool      PoolConfig      `yaml:"pool"`
 	RateLimit RateLimitConfig `yaml:"rateLimit"`
-	Auth      AuthConfig      `yaml:"auth"`
-	Server    ServerConfig    `yaml:"server"`
+	HTTP      HTTPConfig      `yaml:"http"`
+	GRPC      GRPCConfig      `yaml:"grpc"`
 	File      FileConfig      `yaml:"file"`
 }
 
@@ -77,6 +87,17 @@ func LoadConfigFile(path string) (*ConfigFile, error) {
 
 	slog.Info("config file loaded", "path", absPath)
 	return &cfg, nil
+}
+
+func parseTimeout(timeoutStr string) time.Duration {
+	if timeoutStr == "" {
+		return 60 * time.Second
+	}
+	d, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return 60 * time.Second
+	}
+	return d
 }
 
 func MergeConfigWithEnv(cfg *ConfigFile, envCfg *Config) *Config {
@@ -114,19 +135,43 @@ func MergeConfigWithEnv(cfg *ConfigFile, envCfg *Config) *Config {
 		result.RateLimitWindow = cfg.RateLimit.Window
 	}
 
-	if len(cfg.Auth.Tokens) > 0 && os.Getenv("AUTH_TOKENS") == "" {
-		result.AuthTokens = cfg.Auth.Tokens
+	if cfg.HTTP.Port > 0 && os.Getenv("LISTEN_HTTP") == "" {
+		result.ListenHTTP = fmt.Sprintf(":%d", cfg.HTTP.Port)
+	}
+	if cfg.HTTP.Host != "" {
+		result.HTTPHost = cfg.HTTP.Host
+	}
+	if cfg.HTTP.Timeout != "" {
+		result.HTTPTimeout = parseTimeout(cfg.HTTP.Timeout)
+	}
+	if len(cfg.HTTP.AuthTokens) > 0 && os.Getenv("AUTH_TOKENS") == "" {
+		result.AuthTokens = cfg.HTTP.AuthTokens
 		result.AuthTokenMap = make(map[string]bool)
-		for _, token := range cfg.Auth.Tokens {
+		for _, token := range cfg.HTTP.AuthTokens {
 			result.AuthTokenMap[token] = true
 		}
 	}
 
-	if cfg.Server.HTTP != "" && os.Getenv("LISTEN_HTTP") == "" {
-		result.ListenHTTP = cfg.Server.HTTP
+	if cfg.GRPC.Port > 0 && os.Getenv("LISTEN_GRPC") == "" {
+		result.ListenGRPC = fmt.Sprintf(":%d", cfg.GRPC.Port)
 	}
-	if cfg.Server.GRPC != "" && os.Getenv("LISTEN_GRPC") == "" {
-		result.ListenGRPC = cfg.Server.GRPC
+	if cfg.GRPC.Host != "" {
+		result.GRPCHost = cfg.GRPC.Host
+	}
+	if cfg.GRPC.Timeout != "" {
+		result.GRPCTimeout = parseTimeout(cfg.GRPC.Timeout)
+	}
+	if cfg.GRPC.MaxRecvMsgSize > 0 && os.Getenv("GRPC_MAX_RECV_MSG_SIZE") == "" {
+		result.GRPCMaxRecvMsgSize = cfg.GRPC.MaxRecvMsgSize
+	}
+	if cfg.GRPC.MaxSendMsgSize > 0 && os.Getenv("GRPC_MAX_SEND_MSG_SIZE") == "" {
+		result.GRPCMaxSendMsgSize = cfg.GRPC.MaxSendMsgSize
+	}
+	if cfg.GRPC.EnableReflection {
+		result.GRPCEnableReflection = true
+	}
+	if cfg.GRPC.EnableHealthCheck {
+		result.GRPCEnableHealthCheck = true
 	}
 
 	return &result
