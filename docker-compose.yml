@@ -1,3 +1,27 @@
+x-zeek-runner-common: &zeek-runner-common
+  image: zeek_runner:latest
+  restart: unless-stopped
+  depends_on:
+    redis:
+      condition: service_healthy
+  volumes: &zeek-runner-volumes
+    - ./pcaps:/opt/zeek_runner/pcaps
+    - ./scripts:/opt/zeek_runner/scripts
+    - ./extracted:/opt/zeek_runner/extracted
+    - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
+    - ./config.local.yaml:/opt/zeek_runner/config.yaml:ro
+  logging: &zeek-runner-logging
+    driver: json-file
+    options:
+      max-size: "100m"
+      max-file: "3"
+  healthcheck: &zeek-runner-healthcheck
+    test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/healthz"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 10s
+
 services:
   redis:
     image: redis:8-alpine
@@ -20,88 +44,25 @@ services:
       retries: 5
 
   zeek_runner_1:
-    image: zeek_runner:latest
+    <<: *zeek-runner-common
     container_name: zeek_runner_1
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
     ports:
       - "8001:8000"
       - "50051:50051"
-    volumes:
-      - ./pcaps:/opt/zeek_runner/pcaps
-      - ./scripts:/opt/zeek_runner/scripts
-      - ./extracted:/opt/zeek_runner/extracted
-      - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
-      - ./config.yaml:/opt/zeek_runner/config.yaml:ro
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   zeek_runner_2:
-    image: zeek_runner:latest
+    <<: *zeek-runner-common
     container_name: zeek_runner_2
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
     ports:
       - "8002:8000"
       - "50052:50051"
-    volumes:
-      - ./pcaps:/opt/zeek_runner/pcaps
-      - ./scripts:/opt/zeek_runner/scripts
-      - ./extracted:/opt/zeek_runner/extracted
-      - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
-      - ./config.yaml:/opt/zeek_runner/config.yaml:ro
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   zeek_runner_3:
-    image: zeek_runner:latest
+    <<: *zeek-runner-common
     container_name: zeek_runner_3
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
     ports:
       - "8003:8000"
       - "50053:50051"
-    volumes:
-      - ./pcaps:/opt/zeek_runner/pcaps
-      - ./scripts:/opt/zeek_runner/scripts
-      - ./extracted:/opt/zeek_runner/extracted
-      - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
-      - ./config.yaml:/opt/zeek_runner/config.yaml:ro
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   nginx:
     image: nginx:1.28-alpine
