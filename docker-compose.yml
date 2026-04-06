@@ -9,7 +9,7 @@ x-zeek-runner-common: &zeek-runner-common
     - ./scripts:/opt/zeek_runner/scripts
     - ./extracted:/opt/zeek_runner/extracted
     - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
-    - ./config.local.yaml:/opt/zeek_runner/config.yaml:ro
+    - ./config.yaml:/opt/zeek_runner/config.yaml:ro
   logging: &zeek-runner-logging
     driver: json-file
     options:
@@ -31,14 +31,15 @@ services:
       - "6380:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-zeek_redis_1949}
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
     logging:
       driver: json-file
       options:
         max-size: "50m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-zeek_redis_1949}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "zeek_redis_1949", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

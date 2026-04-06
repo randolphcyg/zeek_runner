@@ -27,7 +27,7 @@ func NewApp() (*App, error) {
 	cm := NewConfigManager()
 	cfg := cm.Get()
 
-	pool, err := ants.NewPool(cfg.PoolSize,
+	pool, err := ants.NewPool(cfg.Pool.Size,
 		ants.WithMaxBlockingTasks(10000),
 		ants.WithNonblocking(false),
 	)
@@ -35,20 +35,31 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 
-	rl := NewRateLimiter(cfg.RateLimit, time.Duration(cfg.RateLimitWindow)*time.Second)
-	slog.Info("rate limiter initialized", "limit", cfg.RateLimit, "window_seconds", cfg.RateLimitWindow)
+	rl := NewRateLimiter(cfg.RateLimit.Limit, time.Duration(cfg.RateLimit.Window)*time.Second)
+	slog.Info("rate limiter initialized", "limit", cfg.RateLimit.Limit, "window_seconds", cfg.RateLimit.Window)
 
 	var taskManager *TaskManager
 	var fileDedupMgr *FileDedupManager
-	if cfg.RedisAddr != "" {
-		taskManager = NewTaskManager(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	if cfg.Redis.Addr != "" {
+		poolCfg := &RedisPoolConfig{
+			PoolSize:     cfg.Redis.PoolSize,
+			MinIdleConns: cfg.Redis.MinIdleConns,
+			MaxRetries:   cfg.Redis.MaxRetries,
+			DialTimeout:  parseTimeout(cfg.Redis.DialTimeout),
+			ReadTimeout:  parseTimeout(cfg.Redis.ReadTimeout),
+			WriteTimeout: parseTimeout(cfg.Redis.WriteTimeout),
+			PoolTimeout:  parseTimeout(cfg.Redis.PoolTimeout),
+			MaxLifetime:  parseTimeout(cfg.Redis.ConnMaxLifetime),
+			MaxIdleTime:  parseTimeout(cfg.Redis.ConnMaxIdleTime),
+		}
+		taskManager = NewTaskManager(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, poolCfg)
 		if err := taskManager.HealthCheck(context.Background()); err != nil {
 			slog.Warn("Redis connection failed, task persistence disabled", "err", err)
 			taskManager = nil
 		} else {
-			slog.Info("Task manager initialized", "redis_addr", cfg.RedisAddr)
+			slog.Info("Task manager initialized", "redis_addr", cfg.Redis.Addr, "pool_size", cfg.Redis.PoolSize)
 
-			fileDedupMgr = NewFileDedupManager(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB+1)
+			fileDedupMgr = NewFileDedupManager(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB+1, poolCfg)
 			if err := fileDedupMgr.HealthCheck(context.Background()); err != nil {
 				slog.Warn("File dedup manager health check failed", "err", err)
 				fileDedupMgr = nil
@@ -68,8 +79,8 @@ func NewApp() (*App, error) {
 		Service:       NewService(pool, cm, taskManager, fileDedupMgr),
 	}
 
-	if cfg.KafkaBrokers != "" {
-		app.KafkaChecker = NewKafkaChecker(cfg.KafkaBrokers)
+	if cfg.Kafka.Brokers != "" {
+		app.KafkaChecker = NewKafkaChecker(cfg.Kafka.Brokers)
 	} else {
 		slog.Warn("KAFKA_BROKERS not set")
 	}
@@ -125,13 +136,13 @@ func (a *App) ReloadConfig() {
 	oldCfg := a.Config
 	a.Config = a.ConfigManager.Reload()
 
-	if oldCfg.RateLimit != a.Config.RateLimit || oldCfg.RateLimitWindow != a.Config.RateLimitWindow {
-		a.RateLimiter.UpdateLimit(a.Config.RateLimit, time.Duration(a.Config.RateLimitWindow)*time.Second)
+	if oldCfg.RateLimit.Limit != a.Config.RateLimit.Limit || oldCfg.RateLimit.Window != a.Config.RateLimit.Window {
+		a.RateLimiter.UpdateLimit(a.Config.RateLimit.Limit, time.Duration(a.Config.RateLimit.Window)*time.Second)
 	}
 
 	slog.Info("App config reloaded",
-		"rate_limit", a.Config.RateLimit,
-		"rate_limit_window", a.Config.RateLimitWindow,
-		"tokens_count", len(a.Config.AuthTokens),
+		"rate_limit", a.Config.RateLimit.Limit,
+		"rate_limit_window", a.Config.RateLimit.Window,
+		"tokens_count", len(a.Config.HTTP.AuthTokens),
 	)
 }

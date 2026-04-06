@@ -135,9 +135,9 @@ func grpcAuthInterceptorWithManager(cm *ConfigManager) grpc.UnaryServerIntercept
 		if len(userAgent) == 0 || userAgent[0] == "" {
 			return nil, status.Error(codes.Unauthenticated, "user-agent is required")
 		}
-		if len(cfg.AuthTokens) > 0 {
+		if len(cfg.GRPC.AuthTokens) > 0 {
 			token := md.Get("authorization")
-			if len(token) == 0 || !cfg.AuthTokenMap[token[0]] {
+			if len(token) == 0 || !cfg.GRPC.AuthTokenMap[token[0]] {
 				return nil, status.Error(codes.Unauthenticated, "invalid or missing token")
 			}
 		}

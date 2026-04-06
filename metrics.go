@@ -96,7 +96,7 @@ func (m *MetricsCollector) Register() {
 		},
 		func() float64 {
 			cfg := m.app.ConfigManager.Get()
-			return float64(cfg.PoolSize)
+			return float64(cfg.Pool.Size)
 		},
 	))
 

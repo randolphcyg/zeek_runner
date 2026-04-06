@@ -355,6 +355,93 @@ docker run -d \
 - **配置文件权限**：设置 `chmod 600 config.yaml` 限制访问
 - **Docker Secrets**：生产环境建议使用 Docker Secrets 或 Kubernetes Secrets
 
+### OpenTelemetry 链路追踪
+
+服务支持 OpenTelemetry 标准链路追踪，可与前置服务形成完整调用链。
+
+#### 三种运行模式
+
+| 模式 | 配置 | 适用场景 |
+|------|------|----------|
+| 禁用 | `enabled: false` | 不需要链路追踪 |
+| 日志输出 | `enabled: true, endpoint: ""` | 生产环境（无额外资源） |
+| 可视化 | `enabled: true, endpoint: "otel-collector:4317"` | 本地开发（需要 Jaeger） |
+
+#### 配置示例
+
+```yaml
+otel:
+  enabled: true
+  endpoint: "otel-collector:4317"  # 留空则输出到日志
+```
+
+#### 生产环境部署
+
+生产环境无需部署额外组件，Trace 数据输出到日志：
+
+```yaml
+# config.yaml
+otel:
+  enabled: true
+  endpoint: ""  # 留空，输出到日志
+```
+
+日志输出示例：
+```json
+{
+  "Name": "zeek_execution",
+  "SpanContext": {
+    "TraceID": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "SpanID": "00f067aa0ba902b7"
+  },
+  "Attributes": [
+    {"Key": "task_id", "Value": {"Type": "STRING", "Value": "task-123"}}
+  ],
+  "Status": {"Code": "Error", "Description": "timeout"}
+}
+```
+
+通过日志系统搜索 `TraceID` 即可追踪调用链。
+
+#### 本地开发部署
+
+本地开发可部署 Jaeger 可视化调用链：
+
+```shell
+# 启动本地开发环境（包含 Jaeger）
+docker-compose -f docker-compose.local.yml up -d
+
+# 访问 Jaeger UI
+open http://localhost:16686
+```
+
+**本地开发架构**：
+
+```
+┌─────────────┐    ┌─────────────────┐    ┌─────────────┐
+│ zeek_runner │───▶│ otel-collector  │───▶│   Jaeger    │
+│             │    │     :4317       │    │   :16686    │
+└─────────────┘    └─────────────────┘    └─────────────┘
+```
+
+#### 资源消耗
+
+| 组件 | 镜像大小 | 内存占用 |
+|------|----------|----------|
+| OTel Collector | ~50MB | ~100MB |
+| Jaeger | ~80MB | ~200MB |
+| **总计** | **~130MB** | **~300MB** |
+
+#### 接入现有 OTel 基础设施
+
+如果公司已有 OTel Collector，直接配置 endpoint：
+
+```yaml
+otel:
+  enabled: true
+  endpoint: "your-otel-collector:4317"
+```
+
 ### 异步任务模式
 
 服务支持两种任务执行模式：
@@ -1055,6 +1142,10 @@ curl -X POST \
 ```shell
 docker-compose up -d
 docker-compose down
+
+本地
+docker-compose -f docker-compose.local.yml up -d
+docker-compose -f docker-compose.local.yml down
 ```
 
 ## 单元测试

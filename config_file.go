@@ -10,62 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type RedisConfig struct {
-	Addr     string `yaml:"addr"`
-	Password string `yaml:"password"`
-	DB       int    `yaml:"db"`
-}
-
-type KafkaConfig struct {
-	Brokers string `yaml:"brokers"`
-	Topic   string `yaml:"topic"`
-}
-
-type PoolConfig struct {
-	Size           int `yaml:"size"`
-	MaxBlocking    int `yaml:"maxBlocking"`
-	TimeoutMinutes int `yaml:"timeoutMinutes"`
-}
-
-type RateLimitConfig struct {
-	Limit  int `yaml:"limit"`
-	Window int `yaml:"window"`
-}
-
-type HTTPConfig struct {
-	Host       string   `yaml:"host"`
-	Port       int      `yaml:"port"`
-	Timeout    string   `yaml:"timeout"`
-	AuthTokens []string `yaml:"authTokens"`
-}
-
-type GRPCConfig struct {
-	Host              string   `yaml:"host"`
-	Port              int      `yaml:"port"`
-	Timeout           string   `yaml:"timeout"`
-	MaxRecvMsgSize    int      `yaml:"maxRecvMsgSize"`
-	MaxSendMsgSize    int      `yaml:"maxSendMsgSize"`
-	EnableReflection  bool     `yaml:"enableReflection"`
-	EnableHealthCheck bool     `yaml:"enableHealthCheck"`
-	AuthTokens        []string `yaml:"authTokens"`
-}
-
-type FileConfig struct {
-	ExtractPath string `yaml:"extractPath"`
-	MinSizeKB   int    `yaml:"minSizeKB"`
-}
-
-type ConfigFile struct {
-	Redis     RedisConfig     `yaml:"redis"`
-	Kafka     KafkaConfig     `yaml:"kafka"`
-	Pool      PoolConfig      `yaml:"pool"`
-	RateLimit RateLimitConfig `yaml:"rateLimit"`
-	HTTP      HTTPConfig      `yaml:"http"`
-	GRPC      GRPCConfig      `yaml:"grpc"`
-	File      FileConfig      `yaml:"file"`
-}
-
-func LoadConfigFile(path string) (*ConfigFile, error) {
+func LoadConfigFile(path string) (*Config, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -80,7 +25,7 @@ func LoadConfigFile(path string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var cfg ConfigFile
+	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
@@ -100,78 +45,119 @@ func parseTimeout(timeoutStr string) time.Duration {
 	return d
 }
 
-func MergeConfigWithEnv(cfg *ConfigFile, envCfg *Config) *Config {
-	if cfg == nil {
+func MergeConfigWithEnv(fileCfg *Config, envCfg *Config) *Config {
+	if fileCfg == nil {
 		return envCfg
 	}
 
 	result := *envCfg
 
-	if cfg.Redis.Addr != "" && os.Getenv("REDIS_ADDR") == "" {
-		result.RedisAddr = cfg.Redis.Addr
+	if fileCfg.Redis.Addr != "" && os.Getenv("REDIS_ADDR") == "" {
+		result.Redis.Addr = fileCfg.Redis.Addr
 	}
-	if cfg.Redis.Password != "" && os.Getenv("REDIS_PASSWORD") == "" {
-		result.RedisPassword = cfg.Redis.Password
+	if fileCfg.Redis.Password != "" && os.Getenv("REDIS_PASSWORD") == "" {
+		result.Redis.Password = fileCfg.Redis.Password
 	}
 	if os.Getenv("REDIS_DB") == "" {
-		result.RedisDB = cfg.Redis.DB
+		result.Redis.DB = fileCfg.Redis.DB
+	}
+	if fileCfg.Redis.PoolSize > 0 {
+		result.Redis.PoolSize = fileCfg.Redis.PoolSize
+	}
+	if fileCfg.Redis.MinIdleConns > 0 {
+		result.Redis.MinIdleConns = fileCfg.Redis.MinIdleConns
+	}
+	if fileCfg.Redis.MaxRetries > 0 {
+		result.Redis.MaxRetries = fileCfg.Redis.MaxRetries
+	}
+	if fileCfg.Redis.DialTimeout != "" {
+		result.Redis.DialTimeout = fileCfg.Redis.DialTimeout
+	}
+	if fileCfg.Redis.ReadTimeout != "" {
+		result.Redis.ReadTimeout = fileCfg.Redis.ReadTimeout
+	}
+	if fileCfg.Redis.WriteTimeout != "" {
+		result.Redis.WriteTimeout = fileCfg.Redis.WriteTimeout
+	}
+	if fileCfg.Redis.PoolTimeout != "" {
+		result.Redis.PoolTimeout = fileCfg.Redis.PoolTimeout
+	}
+	if fileCfg.Redis.ConnMaxLifetime != "" {
+		result.Redis.ConnMaxLifetime = fileCfg.Redis.ConnMaxLifetime
+	}
+	if fileCfg.Redis.ConnMaxIdleTime != "" {
+		result.Redis.ConnMaxIdleTime = fileCfg.Redis.ConnMaxIdleTime
 	}
 
-	if cfg.Kafka.Brokers != "" && os.Getenv("KAFKA_BROKERS") == "" {
-		result.KafkaBrokers = cfg.Kafka.Brokers
+	if fileCfg.Kafka.Brokers != "" && os.Getenv("KAFKA_BROKERS") == "" {
+		result.Kafka.Brokers = fileCfg.Kafka.Brokers
 	}
 
-	if cfg.Pool.Size > 0 && os.Getenv("ZEEK_CONCURRENT_TASKS") == "" {
-		result.PoolSize = cfg.Pool.Size
+	if fileCfg.Pool.Size > 0 && os.Getenv("ZEEK_CONCURRENT_TASKS") == "" {
+		result.Pool.Size = fileCfg.Pool.Size
 	}
-	if cfg.Pool.TimeoutMinutes > 0 && os.Getenv("ZEEK_TIMEOUT_MINUTES") == "" {
-		result.ZeekTimeout = cfg.Pool.TimeoutMinutes
-	}
-
-	if cfg.RateLimit.Limit > 0 && os.Getenv("RATE_LIMIT") == "" {
-		result.RateLimit = cfg.RateLimit.Limit
-	}
-	if cfg.RateLimit.Window > 0 && os.Getenv("RATE_LIMIT_WINDOW") == "" {
-		result.RateLimitWindow = cfg.RateLimit.Window
+	if fileCfg.Pool.TimeoutMinutes > 0 && os.Getenv("ZEEK_TIMEOUT_MINUTES") == "" {
+		result.Pool.TimeoutMinutes = fileCfg.Pool.TimeoutMinutes
 	}
 
-	if cfg.HTTP.Port > 0 && os.Getenv("LISTEN_HTTP") == "" {
-		result.ListenHTTP = fmt.Sprintf(":%d", cfg.HTTP.Port)
+	if fileCfg.RateLimit.Limit > 0 && os.Getenv("RATE_LIMIT") == "" {
+		result.RateLimit.Limit = fileCfg.RateLimit.Limit
 	}
-	if cfg.HTTP.Host != "" {
-		result.HTTPHost = cfg.HTTP.Host
+	if fileCfg.RateLimit.Window > 0 && os.Getenv("RATE_LIMIT_WINDOW") == "" {
+		result.RateLimit.Window = fileCfg.RateLimit.Window
 	}
-	if cfg.HTTP.Timeout != "" {
-		result.HTTPTimeout = parseTimeout(cfg.HTTP.Timeout)
+
+	if fileCfg.HTTP.Port > 0 && os.Getenv("LISTEN_HTTP") == "" {
+		result.HTTP.Port = fileCfg.HTTP.Port
 	}
-	if len(cfg.HTTP.AuthTokens) > 0 && os.Getenv("AUTH_TOKENS") == "" {
-		result.AuthTokens = cfg.HTTP.AuthTokens
-		result.AuthTokenMap = make(map[string]bool)
-		for _, token := range cfg.HTTP.AuthTokens {
-			result.AuthTokenMap[token] = true
+	if fileCfg.HTTP.Host != "" {
+		result.HTTP.Host = fileCfg.HTTP.Host
+	}
+	if fileCfg.HTTP.Timeout != "" {
+		result.HTTP.Timeout = fileCfg.HTTP.Timeout
+	}
+	if len(fileCfg.HTTP.AuthTokens) > 0 && os.Getenv("AUTH_TOKENS") == "" {
+		result.HTTP.AuthTokens = fileCfg.HTTP.AuthTokens
+		result.HTTP.AuthTokenMap = make(map[string]bool)
+		for _, token := range fileCfg.HTTP.AuthTokens {
+			result.HTTP.AuthTokenMap[token] = true
 		}
 	}
 
-	if cfg.GRPC.Port > 0 && os.Getenv("LISTEN_GRPC") == "" {
-		result.ListenGRPC = fmt.Sprintf(":%d", cfg.GRPC.Port)
+	if fileCfg.GRPC.Port > 0 && os.Getenv("LISTEN_GRPC") == "" {
+		result.GRPC.Port = fileCfg.GRPC.Port
 	}
-	if cfg.GRPC.Host != "" {
-		result.GRPCHost = cfg.GRPC.Host
+	if fileCfg.GRPC.Host != "" {
+		result.GRPC.Host = fileCfg.GRPC.Host
 	}
-	if cfg.GRPC.Timeout != "" {
-		result.GRPCTimeout = parseTimeout(cfg.GRPC.Timeout)
+	if fileCfg.GRPC.Timeout != "" {
+		result.GRPC.Timeout = fileCfg.GRPC.Timeout
 	}
-	if cfg.GRPC.MaxRecvMsgSize > 0 && os.Getenv("GRPC_MAX_RECV_MSG_SIZE") == "" {
-		result.GRPCMaxRecvMsgSize = cfg.GRPC.MaxRecvMsgSize
+	if fileCfg.GRPC.MaxRecvMsgSize > 0 && os.Getenv("GRPC_MAX_RECV_MSG_SIZE") == "" {
+		result.GRPC.MaxRecvMsgSize = fileCfg.GRPC.MaxRecvMsgSize
 	}
-	if cfg.GRPC.MaxSendMsgSize > 0 && os.Getenv("GRPC_MAX_SEND_MSG_SIZE") == "" {
-		result.GRPCMaxSendMsgSize = cfg.GRPC.MaxSendMsgSize
+	if fileCfg.GRPC.MaxSendMsgSize > 0 && os.Getenv("GRPC_MAX_SEND_MSG_SIZE") == "" {
+		result.GRPC.MaxSendMsgSize = fileCfg.GRPC.MaxSendMsgSize
 	}
-	if cfg.GRPC.EnableReflection {
-		result.GRPCEnableReflection = true
+	if fileCfg.GRPC.EnableReflection {
+		result.GRPC.EnableReflection = true
 	}
-	if cfg.GRPC.EnableHealthCheck {
-		result.GRPCEnableHealthCheck = true
+	if fileCfg.GRPC.EnableHealthCheck {
+		result.GRPC.EnableHealthCheck = true
+	}
+
+	if fileCfg.OTel.Enabled && os.Getenv("OTEL_ENABLED") == "" {
+		result.OTel.Enabled = true
+	}
+	if fileCfg.OTel.Endpoint != "" && os.Getenv("OTEL_ENDPOINT") == "" {
+		result.OTel.Endpoint = fileCfg.OTel.Endpoint
+	}
+
+	if fileCfg.File.ExtractPath != "" {
+		result.File.ExtractPath = fileCfg.File.ExtractPath
+	}
+	if fileCfg.File.MinSizeKB > 0 {
+		result.File.MinSizeKB = fileCfg.File.MinSizeKB
 	}
 
 	return &result
@@ -199,22 +185,22 @@ func GetConfigPath() string {
 }
 
 func ValidateConfig(cfg *Config) error {
-	if cfg.PoolSize <= 0 {
-		return fmt.Errorf("pool size must be positive, got %d", cfg.PoolSize)
+	if cfg.Pool.Size <= 0 {
+		return fmt.Errorf("pool size must be positive, got %d", cfg.Pool.Size)
 	}
-	if cfg.ZeekTimeout <= 0 {
-		return fmt.Errorf("zeek timeout must be positive, got %d", cfg.ZeekTimeout)
+	if cfg.Pool.TimeoutMinutes <= 0 {
+		return fmt.Errorf("zeek timeout must be positive, got %d", cfg.Pool.TimeoutMinutes)
 	}
-	if cfg.RateLimit <= 0 {
-		return fmt.Errorf("rate limit must be positive, got %d", cfg.RateLimit)
+	if cfg.RateLimit.Limit <= 0 {
+		return fmt.Errorf("rate limit must be positive, got %d", cfg.RateLimit.Limit)
 	}
-	if cfg.RateLimitWindow <= 0 {
-		return fmt.Errorf("rate limit window must be positive, got %d", cfg.RateLimitWindow)
+	if cfg.RateLimit.Window <= 0 {
+		return fmt.Errorf("rate limit window must be positive, got %d", cfg.RateLimit.Window)
 	}
 
-	if cfg.RedisAddr != "" {
-		if cfg.RedisDB < 0 {
-			return fmt.Errorf("redis db must be non-negative, got %d", cfg.RedisDB)
+	if cfg.Redis.Addr != "" {
+		if cfg.Redis.DB < 0 {
+			return fmt.Errorf("redis db must be non-negative, got %d", cfg.Redis.DB)
 		}
 	}
 

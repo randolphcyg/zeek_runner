@@ -51,12 +51,67 @@ type TaskManager struct {
 	instanceID string
 }
 
-func NewTaskManager(redisAddr, redisPassword string, redisDB int) *TaskManager {
+type RedisPoolConfig struct {
+	PoolSize     int
+	MinIdleConns int
+	MaxRetries   int
+	DialTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	PoolTimeout  time.Duration
+	MaxLifetime  time.Duration
+	MaxIdleTime  time.Duration
+}
+
+func NewTaskManager(redisAddr, redisPassword string, redisDB int, poolCfg *RedisPoolConfig) *TaskManager {
+	poolSize := 10
+	minIdleConns := 0
+	maxRetries := 3
+	dialTimeout := 5 * time.Second
+	readTimeout := 3 * time.Second
+	writeTimeout := 3 * time.Second
+	poolTimeout := 4 * time.Second
+	var maxLifetime, maxIdleTime time.Duration
+
+	if poolCfg != nil {
+		if poolCfg.PoolSize > 0 {
+			poolSize = poolCfg.PoolSize
+		}
+		if poolCfg.MinIdleConns > 0 {
+			minIdleConns = poolCfg.MinIdleConns
+		}
+		if poolCfg.MaxRetries > 0 {
+			maxRetries = poolCfg.MaxRetries
+		}
+		if poolCfg.DialTimeout > 0 {
+			dialTimeout = poolCfg.DialTimeout
+		}
+		if poolCfg.ReadTimeout > 0 {
+			readTimeout = poolCfg.ReadTimeout
+		}
+		if poolCfg.WriteTimeout > 0 {
+			writeTimeout = poolCfg.WriteTimeout
+		}
+		if poolCfg.PoolTimeout > 0 {
+			poolTimeout = poolCfg.PoolTimeout
+		}
+		maxLifetime = poolCfg.MaxLifetime
+		maxIdleTime = poolCfg.MaxIdleTime
+	}
+
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: redisPassword,
-		DB:       redisDB,
-		PoolSize: 10,
+		Addr:            redisAddr,
+		Password:        redisPassword,
+		DB:              redisDB,
+		PoolSize:        poolSize,
+		MinIdleConns:    minIdleConns,
+		MaxRetries:      maxRetries,
+		DialTimeout:     dialTimeout,
+		ReadTimeout:     readTimeout,
+		WriteTimeout:    writeTimeout,
+		PoolTimeout:     poolTimeout,
+		ConnMaxLifetime: maxLifetime,
+		ConnMaxIdleTime: maxIdleTime,
 	})
 
 	instanceID := generateInstanceID()
