@@ -109,7 +109,7 @@ func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*Analy
 	if err != nil {
 		if errors.Is(err, ants.ErrPoolOverload) {
 			RecordTask("rejected", 0)
-			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.PoolSize)
+			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.Pool.Size)
 		}
 		RecordTask("error", 0)
 		return nil, status.Errorf(codes.Internal, "submit failed: %v", err)
@@ -195,7 +195,7 @@ func (s *Service) StartTaskConsumer(ctx context.Context) {
 	}
 
 	LogServiceEvent("consumer_started",
-		"pool_size", s.getConfig().PoolSize,
+		"pool_size", s.getConfig().Pool.Size,
 	)
 
 	go func() {
@@ -250,7 +250,7 @@ func (s *Service) processQueuedTask(ctx context.Context, taskID string) {
 
 	cfg := s.getConfig()
 	err = s.pool.Submit(func() {
-		s.executeAsyncTask(context.Background(), taskID, req, cfg.ZeekTimeout)
+		s.executeAsyncTask(context.Background(), taskID, req, cfg.Pool.TimeoutMinutes)
 	})
 
 	if err != nil {
@@ -290,7 +290,7 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 		"type", taskType,
 		"pcap", pcapName,
 		"script", scriptName,
-		"timeout_min", cfg.ZeekTimeout,
+		"timeout_min", cfg.Pool.TimeoutMinutes,
 	)
 
 	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", req.UUID))
@@ -300,10 +300,10 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 	}
 	defer os.RemoveAll(workDir)
 
-	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(cfg.ZeekTimeout)*time.Minute)
+	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(cfg.Pool.TimeoutMinutes)*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath)
+	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath, "/usr/local/zeek/share/zeek/base/custom/config.zeek")
 	cmd.Dir = workDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 
@@ -317,6 +317,7 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 		"SCRIPT_PATH":             req.ScriptPath,
 		"EXTRACTED_FILE_PATH":     req.ExtractedFilePath,
 		"EXTRACTED_FILE_MIN_SIZE": strconv.Itoa(req.ExtractedFileMinSize),
+		"KAFKA_BROKERS":           cfg.Kafka.Brokers,
 	}
 	for k, v := range envMap {
 		if v != "" {

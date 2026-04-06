@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"zeek_runner/api/pb"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -29,6 +31,9 @@ func main() {
 
 	LogStartupInfo(instanceID, app.Config)
 
+	shutdownTracer := InitTracer(app.Config)
+	defer shutdownTracer()
+
 	metricsCollector := NewMetricsCollector(app)
 	metricsCollector.Register()
 
@@ -43,6 +48,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(otelgin.Middleware("zeek_runner"))
 	r.Use(requestIDMiddleware())
 	r.Use(loggingMiddleware())
 	r.Use(rateLimitMiddleware(app.RateLimiter))
@@ -58,9 +64,9 @@ func main() {
 	})
 	auth.Use(func(c *gin.Context) {
 		cfg := app.ConfigManager.Get()
-		if len(cfg.AuthTokens) > 0 {
+		if len(cfg.HTTP.AuthTokens) > 0 {
 			token := c.GetHeader("Authorization")
-			if !cfg.AuthTokenMap[token] {
+			if !cfg.HTTP.AuthTokenMap[token] {
 				c.AbortWithStatusJSON(401, gin.H{"code": 401, "msg": "unauthorized: invalid or missing token"})
 				return
 			}
@@ -76,36 +82,36 @@ func main() {
 		auth.POST("/syntax-check", httpHandler.HandleSyntaxCheck)
 	}
 
-	srv := &http.Server{Addr: app.Config.ListenHTTP, Handler: r}
+	srv := &http.Server{Addr: fmt.Sprintf("%s:%d", app.Config.HTTP.Host, app.Config.HTTP.Port), Handler: r}
 
 	go func() {
-		slog.Info("HTTP started", "addr", app.Config.ListenHTTP)
+		slog.Info("HTTP started", "addr", fmt.Sprintf("%s:%d", app.Config.HTTP.Host, app.Config.HTTP.Port))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("HTTP error", "err", err)
 		}
 	}()
 
 	grpcSrv := NewGRPCServerWithOptions(
-		app.Config.GRPCMaxRecvMsgSize,
-		app.Config.GRPCMaxSendMsgSize,
-		app.Config.GRPCEnableReflection,
+		app.Config.GRPC.MaxRecvMsgSize,
+		app.Config.GRPC.MaxSendMsgSize,
+		app.Config.GRPC.EnableReflection,
 		grpcRecoveryInterceptor(),
 		grpcRateLimitInterceptor(app.RateLimiter),
-		grpcTimeoutInterceptor(app.Config.GRPCTimeout),
+		grpcTimeoutInterceptor(parseTimeout(app.Config.GRPC.Timeout)),
 		grpcAuthInterceptorWithManager(app.ConfigManager),
 		grpcLoggingInterceptor(),
 	)
 	go func() {
-		lis, err := net.Listen("tcp", app.Config.ListenGRPC)
+		lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", app.Config.GRPC.Host, app.Config.GRPC.Port))
 		if err != nil {
 			slog.Error("gRPC listen failed", "err", err)
 			return
 		}
 		pb.RegisterZeekAnalysisServiceServer(grpcSrv, grpcServer)
-		if app.Config.GRPCEnableReflection {
+		if app.Config.GRPC.EnableReflection {
 			reflection.Register(grpcSrv)
 		}
-		slog.Info("gRPC started", "addr", app.Config.ListenGRPC)
+		slog.Info("gRPC started", "addr", fmt.Sprintf("%s:%d", app.Config.GRPC.Host, app.Config.GRPC.Port))
 		if err := grpcSrv.Serve(lis); err != nil {
 			slog.Error("gRPC error", "err", err)
 		}

@@ -1,7 +1,16 @@
 redis:
-  addr: "redis:6379"
+  addr: "192.168.1.12:6379"
   password: "zeek_redis_1949"
-  db: 2
+  db: 3
+  poolSize: 100
+  minIdleConns: 10
+  maxRetries: 3
+  dialTimeout: "5s"
+  readTimeout: "3s"
+  writeTimeout: "3s"
+  poolTimeout: "4s"
+  connMaxLifetime: "30m"
+  connMaxIdleTime: "10m"
 
 kafka:
   brokers: "192.168.1.12:9092"
@@ -41,3 +50,7 @@ grpc:
 file:
   extractPath: "/opt/zeek_runner/extracted"
   minSizeKB: 20
+
+otel:
+  enabled: false
+  endpoint: "192.168.1.12:4317"

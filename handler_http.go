@@ -211,7 +211,7 @@ func (h *HTTPHandler) Healthz(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":        msg,
 		"pool_running":  h.app.TaskPool.Running(),
-		"pool_capacity": cfg.PoolSize,
+		"pool_capacity": cfg.Pool.Size,
 		"kafka_ready":   h.app.IsKafkaReady(),
 		"redis_ready":   redisReady,
 		"timestamp":     time.Now().Format(time.RFC3339),

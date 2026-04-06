@@ -71,7 +71,7 @@ func (s *GRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest
 	return &pb.HealthCheckResponse{
 		Status:       statusMsg,
 		PoolRunning:  int32(s.app.TaskPool.Running()),
-		PoolCapacity: int32(cfg.PoolSize),
+		PoolCapacity: int32(cfg.Pool.Size),
 		KafkaReady:   s.app.IsKafkaReady(),
 		RedisReady:   redisReady,
 		Timestamp:    time.Now().Format(time.RFC3339),

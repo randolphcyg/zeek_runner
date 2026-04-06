@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -13,6 +14,7 @@ import (
 
 func NewGRPCServerWithOptions(maxRecvMsgSize, maxSendMsgSize int, enableReflection bool, interceptors ...grpc.UnaryServerInterceptor) *grpc.Server {
 	opts := []grpc.ServerOption{
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.MaxRecvMsgSize(maxRecvMsgSize),
 		grpc.MaxSendMsgSize(maxSendMsgSize),
 		grpc.ChainUnaryInterceptor(interceptors...),

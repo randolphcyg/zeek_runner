@@ -12,28 +12,76 @@ import (
 	"time"
 )
 
-type Config struct {
-	PoolSize        int
-	ZeekTimeout     int
-	KafkaBrokers    string
-	RedisAddr       string
-	RedisPassword   string
-	RedisDB         int
-	ListenHTTP      string
-	ListenGRPC      string
-	HTTPHost        string
-	GRPCHost        string
-	HTTPTimeout     time.Duration
-	GRPCTimeout     time.Duration
-	RateLimit       int
-	RateLimitWindow int
-	AuthTokens      []string
-	AuthTokenMap    map[string]bool
+type RedisConfig struct {
+	Addr            string `yaml:"addr"`
+	Password        string `yaml:"password"`
+	DB              int    `yaml:"db"`
+	PoolSize        int    `yaml:"poolSize"`
+	MinIdleConns    int    `yaml:"minIdleConns"`
+	MaxRetries      int    `yaml:"maxRetries"`
+	DialTimeout     string `yaml:"dialTimeout"`
+	ReadTimeout     string `yaml:"readTimeout"`
+	WriteTimeout    string `yaml:"writeTimeout"`
+	PoolTimeout     string `yaml:"poolTimeout"`
+	ConnMaxLifetime string `yaml:"connMaxLifetime"`
+	ConnMaxIdleTime string `yaml:"connMaxIdleTime"`
+}
 
-	GRPCMaxRecvMsgSize    int
-	GRPCMaxSendMsgSize    int
-	GRPCEnableReflection  bool
-	GRPCEnableHealthCheck bool
+type KafkaConfig struct {
+	Brokers string `yaml:"brokers"`
+	Topic   string `yaml:"topic"`
+}
+
+type PoolConfig struct {
+	Size           int `yaml:"size"`
+	MaxBlocking    int `yaml:"maxBlocking"`
+	TimeoutMinutes int `yaml:"timeoutMinutes"`
+}
+
+type HTTPConfig struct {
+	Host         string          `yaml:"host"`
+	Port         int             `yaml:"port"`
+	Timeout      string          `yaml:"timeout"`
+	AuthTokens   []string        `yaml:"authTokens"`
+	AuthTokenMap map[string]bool `yaml:"-"`
+}
+
+type GRPCConfig struct {
+	Host              string          `yaml:"host"`
+	Port              int             `yaml:"port"`
+	Timeout           string          `yaml:"timeout"`
+	MaxRecvMsgSize    int             `yaml:"maxRecvMsgSize"`
+	MaxSendMsgSize    int             `yaml:"maxSendMsgSize"`
+	EnableReflection  bool            `yaml:"enableReflection"`
+	EnableHealthCheck bool            `yaml:"enableHealthCheck"`
+	AuthTokens        []string        `yaml:"authTokens"`
+	AuthTokenMap      map[string]bool `yaml:"-"`
+}
+
+type RateLimitConfig struct {
+	Limit  int `yaml:"limit"`
+	Window int `yaml:"window"`
+}
+
+type OTelConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
+}
+
+type FileConfig struct {
+	ExtractPath string `yaml:"extractPath"`
+	MinSizeKB   int    `yaml:"minSizeKB"`
+}
+
+type Config struct {
+	Redis     RedisConfig     `yaml:"redis"`
+	Kafka     KafkaConfig     `yaml:"kafka"`
+	Pool      PoolConfig      `yaml:"pool"`
+	RateLimit RateLimitConfig `yaml:"rateLimit"`
+	HTTP      HTTPConfig      `yaml:"http"`
+	GRPC      GRPCConfig      `yaml:"grpc"`
+	File      FileConfig      `yaml:"file"`
+	OTel      OTelConfig      `yaml:"otel"`
 }
 
 type ConfigManager struct {
@@ -55,13 +103,13 @@ func (cm *ConfigManager) Reload() *Config {
 	newCfg := loadConfig()
 
 	slog.Info("Config reloaded",
-		"pool_size", fmt.Sprintf("%d->%d", oldCfg.PoolSize, newCfg.PoolSize),
-		"zeek_timeout", fmt.Sprintf("%d->%d", oldCfg.ZeekTimeout, newCfg.ZeekTimeout),
-		"rate_limit", fmt.Sprintf("%d->%d", oldCfg.RateLimit, newCfg.RateLimit),
-		"rate_limit_window", fmt.Sprintf("%d->%d", oldCfg.RateLimitWindow, newCfg.RateLimitWindow),
-		"tokens_count", len(newCfg.AuthTokens),
-		"redis_addr", newCfg.RedisAddr,
-		"kafka_brokers", newCfg.KafkaBrokers,
+		"pool_size", fmt.Sprintf("%d->%d", oldCfg.Pool.Size, newCfg.Pool.Size),
+		"zeek_timeout", fmt.Sprintf("%d->%d", oldCfg.Pool.TimeoutMinutes, newCfg.Pool.TimeoutMinutes),
+		"rate_limit", fmt.Sprintf("%d->%d", oldCfg.RateLimit.Limit, newCfg.RateLimit.Limit),
+		"rate_limit_window", fmt.Sprintf("%d->%d", oldCfg.RateLimit.Window, newCfg.RateLimit.Window),
+		"tokens_count", len(newCfg.HTTP.AuthTokens),
+		"redis_addr", newCfg.Redis.Addr,
+		"kafka_brokers", newCfg.Kafka.Brokers,
 	)
 
 	cm.config.Store(newCfg)
@@ -95,26 +143,44 @@ func loadConfig() *Config {
 	}
 
 	cfg := &Config{
-		PoolSize:              getEnvInt("ZEEK_CONCURRENT_TASKS", 8),
-		ZeekTimeout:           getEnvInt("ZEEK_TIMEOUT_MINUTES", 5),
-		KafkaBrokers:          os.Getenv("KAFKA_BROKERS"),
-		RedisAddr:             getEnvString("REDIS_ADDR", ""),
-		RedisPassword:         os.Getenv("REDIS_PASSWORD"),
-		RedisDB:               getEnvInt("REDIS_DB", 0),
-		ListenHTTP:            getEnvString("LISTEN_HTTP", ":8000"),
-		ListenGRPC:            getEnvString("LISTEN_GRPC", ":50051"),
-		HTTPHost:              getEnvString("HTTP_HOST", "0.0.0.0"),
-		GRPCHost:              getEnvString("GRPC_HOST", "0.0.0.0"),
-		HTTPTimeout:           getEnvDuration("HTTP_TIMEOUT", 60*time.Second),
-		GRPCTimeout:           getEnvDuration("GRPC_TIMEOUT", 300*time.Second),
-		RateLimit:             getEnvInt("RATE_LIMIT", 1000),
-		RateLimitWindow:       getEnvInt("RATE_LIMIT_WINDOW", 60),
-		AuthTokens:            authTokens,
-		AuthTokenMap:          authTokenMap,
-		GRPCMaxRecvMsgSize:    getEnvInt("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
-		GRPCMaxSendMsgSize:    getEnvInt("GRPC_MAX_SEND_MSG_SIZE", 16*1024*1024),
-		GRPCEnableReflection:  getEnvBool("GRPC_ENABLE_REFLECTION", true),
-		GRPCEnableHealthCheck: getEnvBool("GRPC_ENABLE_HEALTH_CHECK", true),
+		Redis: RedisConfig{
+			Addr:       getEnvString("REDIS_ADDR", ""),
+			Password:   os.Getenv("REDIS_PASSWORD"),
+			DB:         getEnvInt("REDIS_DB", 0),
+			PoolSize:   10,
+			MaxRetries: 3,
+		},
+		Kafka: KafkaConfig{
+			Brokers: os.Getenv("KAFKA_BROKERS"),
+		},
+		Pool: PoolConfig{
+			Size:           getEnvInt("ZEEK_CONCURRENT_TASKS", 8),
+			TimeoutMinutes: getEnvInt("ZEEK_TIMEOUT_MINUTES", 5),
+		},
+		RateLimit: RateLimitConfig{
+			Limit:  getEnvInt("RATE_LIMIT", 1000),
+			Window: getEnvInt("RATE_LIMIT_WINDOW", 60),
+		},
+		HTTP: HTTPConfig{
+			Host:         getEnvString("HTTP_HOST", "0.0.0.0"),
+			Port:         getEnvInt("HTTP_PORT", 8000),
+			Timeout:      "60s",
+			AuthTokens:   authTokens,
+			AuthTokenMap: authTokenMap,
+		},
+		GRPC: GRPCConfig{
+			Host:              getEnvString("GRPC_HOST", "0.0.0.0"),
+			Port:              getEnvInt("GRPC_PORT", 50051),
+			Timeout:           "300s",
+			MaxRecvMsgSize:    getEnvInt("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
+			MaxSendMsgSize:    getEnvInt("GRPC_MAX_SEND_MSG_SIZE", 16*1024*1024),
+			EnableReflection:  getEnvBool("GRPC_ENABLE_REFLECTION", true),
+			EnableHealthCheck: getEnvBool("GRPC_ENABLE_HEALTH_CHECK", true),
+		},
+		OTel: OTelConfig{
+			Enabled:  getEnvBool("OTEL_ENABLED", false),
+			Endpoint: getEnvString("OTEL_ENDPOINT", ""),
+		},
 	}
 
 	configPath := GetConfigPath()

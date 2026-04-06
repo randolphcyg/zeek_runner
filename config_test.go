@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -17,11 +18,11 @@ func TestConfigManager_Get(t *testing.T) {
 	cm := NewConfigManager()
 	cfg := cm.Get()
 
-	if cfg.PoolSize != 16 {
-		t.Errorf("expected PoolSize 16, got %d", cfg.PoolSize)
+	if cfg.Pool.Size != 16 {
+		t.Errorf("expected Pool.Size 16, got %d", cfg.Pool.Size)
 	}
-	if cfg.RateLimit != 2000 {
-		t.Errorf("expected RateLimit 2000, got %d", cfg.RateLimit)
+	if cfg.RateLimit.Limit != 2000 {
+		t.Errorf("expected RateLimit.Limit 2000, got %d", cfg.RateLimit.Limit)
 	}
 }
 
@@ -32,15 +33,15 @@ func TestConfigManager_Reload(t *testing.T) {
 	cm := NewConfigManager()
 	oldCfg := cm.Get()
 
-	if oldCfg.RateLimit != 1000 {
-		t.Errorf("expected initial RateLimit 1000, got %d", oldCfg.RateLimit)
+	if oldCfg.RateLimit.Limit != 1000 {
+		t.Errorf("expected initial RateLimit.Limit 1000, got %d", oldCfg.RateLimit.Limit)
 	}
 
 	os.Setenv("RATE_LIMIT", "3000")
 	newCfg := cm.Reload()
 
-	if newCfg.RateLimit != 3000 {
-		t.Errorf("expected reloaded RateLimit 3000, got %d", newCfg.RateLimit)
+	if newCfg.RateLimit.Limit != 3000 {
+		t.Errorf("expected reloaded RateLimit.Limit 3000, got %d", newCfg.RateLimit.Limit)
 	}
 }
 
@@ -51,18 +52,18 @@ func TestConfigManager_AuthTokens(t *testing.T) {
 	cm := NewConfigManager()
 	cfg := cm.Get()
 
-	if len(cfg.AuthTokens) != 3 {
-		t.Errorf("expected 3 auth tokens, got %d", len(cfg.AuthTokens))
+	if len(cfg.HTTP.AuthTokens) != 3 {
+		t.Errorf("expected 3 auth tokens, got %d", len(cfg.HTTP.AuthTokens))
 	}
 
-	if !cfg.AuthTokenMap["token1"] {
-		t.Error("token1 should be in AuthTokenMap")
+	if !cfg.HTTP.AuthTokenMap["token1"] {
+		t.Error("token1 should be in HTTP.AuthTokenMap")
 	}
-	if !cfg.AuthTokenMap["token2"] {
-		t.Error("token2 should be in AuthTokenMap")
+	if !cfg.HTTP.AuthTokenMap["token2"] {
+		t.Error("token2 should be in HTTP.AuthTokenMap")
 	}
-	if !cfg.AuthTokenMap["token3"] {
-		t.Error("token3 should be in AuthTokenMap")
+	if !cfg.HTTP.AuthTokenMap["token3"] {
+		t.Error("token3 should be in HTTP.AuthTokenMap")
 	}
 }
 
@@ -73,23 +74,25 @@ func TestConfig_Defaults(t *testing.T) {
 	cm := NewConfigManager()
 	cfg := cm.Get()
 
-	if cfg.PoolSize != 8 {
-		t.Errorf("expected default PoolSize 8, got %d", cfg.PoolSize)
+	if cfg.Pool.Size != 8 {
+		t.Errorf("expected default Pool.Size 8, got %d", cfg.Pool.Size)
 	}
-	if cfg.ZeekTimeout != 5 {
-		t.Errorf("expected default ZeekTimeout 5, got %d", cfg.ZeekTimeout)
+	if cfg.Pool.TimeoutMinutes != 5 {
+		t.Errorf("expected default Pool.TimeoutMinutes 5, got %d", cfg.Pool.TimeoutMinutes)
 	}
-	if cfg.RateLimit != 1000 {
-		t.Errorf("expected default RateLimit 1000, got %d", cfg.RateLimit)
+	if cfg.RateLimit.Limit != 1000 {
+		t.Errorf("expected default RateLimit.Limit 1000, got %d", cfg.RateLimit.Limit)
 	}
-	if cfg.RateLimitWindow != 60 {
-		t.Errorf("expected default RateLimitWindow 60, got %d", cfg.RateLimitWindow)
+	if cfg.RateLimit.Window != 60 {
+		t.Errorf("expected default RateLimit.Window 60, got %d", cfg.RateLimit.Window)
 	}
-	if cfg.ListenHTTP != ":8000" {
-		t.Errorf("expected default ListenHTTP :8000, got %s", cfg.ListenHTTP)
+	httpAddr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)
+	if httpAddr != "0.0.0.0:8000" {
+		t.Errorf("expected default HTTP addr 0.0.0.0:8000, got %s", httpAddr)
 	}
-	if cfg.ListenGRPC != ":50051" {
-		t.Errorf("expected default ListenGRPC :50051, got %s", cfg.ListenGRPC)
+	grpcAddr := fmt.Sprintf("%s:%d", cfg.GRPC.Host, cfg.GRPC.Port)
+	if grpcAddr != "0.0.0.0:50051" {
+		t.Errorf("expected default GRPC addr 0.0.0.0:50051, got %s", grpcAddr)
 	}
 }
 
@@ -102,7 +105,7 @@ func TestConfigManager_ConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			cfg := cm.Get()
-			_ = cfg.PoolSize
+			_ = cfg.Pool.Size
 		}()
 	}
 	wg.Wait()
