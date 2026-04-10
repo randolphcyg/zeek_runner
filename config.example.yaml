@@ -1,7 +1,7 @@
 redis:
   addr: "192.168.x.xx:6379"
   password: "change-me-in-production"
-  db: 3
+  db: 1
   poolSize: 100
   minIdleConns: 10
   maxRetries: 3

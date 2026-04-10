@@ -144,8 +144,8 @@ func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, e
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
-	if err := s.taskManager.EnqueueTask(ctx, task.TaskID); err != nil {
-		s.taskManager.SetFailed(ctx, task.TaskID, "failed to enqueue")
+	if err := s.taskManager.EnqueueTask(ctx, task.UUID); err != nil {
+		s.taskManager.SetFailed(ctx, task.UUID, "failed to enqueue")
 		return nil, fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
@@ -157,7 +157,7 @@ func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, e
 	return task, nil
 }
 
-func (s *Service) executeAsyncTask(ctx context.Context, taskID string, req AnalyzeReq, timeout int) {
+func (s *Service) executeAsyncTask(ctx context.Context, uuid string, req AnalyzeReq, timeout int) {
 	taskCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Minute)
 	defer cancel()
 
@@ -165,27 +165,68 @@ func (s *Service) executeAsyncTask(ctx context.Context, taskID string, req Analy
 
 	if err != nil {
 		if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
-			s.taskManager.SetTimeout(ctx, taskID)
+			s.taskManager.SetTimeout(ctx, uuid)
 			RecordTask("timeout", 0)
 		} else if errors.Is(taskCtx.Err(), context.Canceled) {
-			s.taskManager.SetFailed(ctx, taskID, "canceled")
+			s.taskManager.SetFailed(ctx, uuid, "canceled")
 			RecordTask("canceled", 0)
 		} else {
-			s.taskManager.SetFailed(ctx, taskID, err.Error())
+			s.taskManager.SetFailed(ctx, uuid, err.Error())
 			RecordTask("failed", 0)
 		}
 		return
 	}
 
-	s.taskManager.SetSuccess(ctx, taskID, string(output))
+	s.taskManager.SetSuccess(ctx, uuid, string(output))
 	RecordTask("success", 0)
 }
 
-func (s *Service) GetTaskStatus(ctx context.Context, taskID string) (*Task, error) {
+func (s *Service) GetTaskStatus(ctx context.Context, uuid string) (*Task, error) {
 	if s.taskManager == nil {
 		return nil, errors.New("task manager not initialized")
 	}
-	return s.taskManager.GetTask(ctx, taskID)
+	return s.taskManager.GetTask(ctx, uuid)
+}
+
+type ParentTaskStatus struct {
+	TaskID       string
+	TotalCount   int
+	PendingCount int
+	RunningCount int
+	SuccessCount int
+	FailedCount  int
+	TimeoutCount int
+	Status       string
+	SubTasks     []*Task
+}
+
+func (s *Service) GetParentTaskStatus(ctx context.Context, taskID string) (*ParentTaskStatus, error) {
+	if s.taskManager == nil {
+		return nil, errors.New("task manager not initialized")
+	}
+
+	redisStatus, err := s.taskManager.GetParentTaskStatusFromRedis(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parent task status: %w", err)
+	}
+
+	status := &ParentTaskStatus{
+		TaskID:       redisStatus.TaskID,
+		TotalCount:   int(redisStatus.TotalCount),
+		PendingCount: int(redisStatus.PendingCount),
+		RunningCount: int(redisStatus.RunningCount),
+		SuccessCount: int(redisStatus.SuccessCount),
+		FailedCount:  int(redisStatus.FailedCount),
+		TimeoutCount: int(redisStatus.TimeoutCount),
+		Status:       redisStatus.Status,
+	}
+
+	tasks, err := s.taskManager.GetTasksByParentID(ctx, taskID)
+	if err == nil {
+		status.SubTasks = tasks
+	}
+
+	return status, nil
 }
 
 func (s *Service) StartTaskConsumer(ctx context.Context) {
@@ -205,32 +246,32 @@ func (s *Service) StartTaskConsumer(ctx context.Context) {
 				LogServiceEvent("consumer_stopped")
 				return
 			default:
-				taskID, err := s.taskManager.DequeueTask(ctx, 5*time.Second)
+				uuid, err := s.taskManager.DequeueTask(ctx, 5*time.Second)
 				if err != nil {
 					LogServiceError("dequeue_failed", err)
 					time.Sleep(time.Second)
 					continue
 				}
 
-				if taskID == "" {
+				if uuid == "" {
 					continue
 				}
 
-				s.processQueuedTask(ctx, taskID)
+				s.processQueuedTask(ctx, uuid)
 			}
 		}
 	}()
 }
 
-func (s *Service) processQueuedTask(ctx context.Context, taskID string) {
-	task, err := s.taskManager.GetTask(ctx, taskID)
+func (s *Service) processQueuedTask(ctx context.Context, uuid string) {
+	task, err := s.taskManager.GetTask(ctx, uuid)
 	if err != nil {
-		LogTaskError("fetch_failed", taskID, "", err)
+		LogTaskError("fetch_failed", "", uuid, err)
 		return
 	}
 
 	if task.Status != TaskStatusPending {
-		LogTaskEvent("skip_processed", taskID, task.UUID,
+		LogTaskEvent("skip_processed", task.TaskID, task.UUID,
 			"status", task.Status,
 		)
 		return
@@ -250,30 +291,30 @@ func (s *Service) processQueuedTask(ctx context.Context, taskID string) {
 
 	cfg := s.getConfig()
 	err = s.pool.Submit(func() {
-		s.executeAsyncTask(context.Background(), taskID, req, cfg.Pool.TimeoutMinutes)
+		s.executeAsyncTask(context.Background(), uuid, req, cfg.Pool.TimeoutMinutes)
 	})
 
 	if err != nil {
 		if errors.Is(err, ants.ErrPoolOverload) {
-			s.taskManager.SetFailed(ctx, taskID, "task pool full")
-			if canRetry, _ := s.taskManager.CanRetry(ctx, taskID); canRetry {
-				s.taskManager.IncrementRetry(ctx, taskID)
-				s.taskManager.EnqueueTask(ctx, taskID)
-				LogTaskEvent("requeue", taskID, task.UUID,
+			s.taskManager.SetFailed(ctx, uuid, "task pool full")
+			if canRetry, _ := s.taskManager.CanRetry(ctx, uuid); canRetry {
+				s.taskManager.IncrementRetry(ctx, uuid)
+				s.taskManager.EnqueueTask(ctx, uuid)
+				LogTaskEvent("requeue", task.TaskID, task.UUID,
 					"reason", "pool_full",
 					"retries", task.Retries+1,
 				)
 			}
 			RecordTask("rejected", 0)
 		} else {
-			s.taskManager.SetFailed(ctx, taskID, err.Error())
+			s.taskManager.SetFailed(ctx, uuid, err.Error())
 			RecordTask("error", 0)
 		}
 		return
 	}
 
-	s.taskManager.SetRunning(ctx, taskID)
-	LogTaskEvent("started", taskID, task.UUID,
+	s.taskManager.SetRunning(ctx, uuid)
+	LogTaskEvent("started", task.TaskID, task.UUID,
 		"pcap", filepath.Base(task.PcapPath),
 		"script", filepath.Base(task.ScriptPath),
 	)
@@ -351,14 +392,14 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 
 		LogTaskError(errMsg, req.TaskID, req.UUID, err,
 			"duration_ms", duration.Milliseconds(),
-			"stderr_size", len(output),
+			"stderr", string(output),
 		)
 		return output, err
 	}
 
 	LogTaskEvent("zeek_done", req.TaskID, req.UUID,
 		"duration_ms", duration.Milliseconds(),
-		"stderr_size", len(output),
+		"stderr", string(output),
 		"type", taskType,
 	)
 
@@ -384,8 +425,20 @@ func (s *Service) processExtractedFiles(ctx context.Context, req AnalyzeReq) {
 		return
 	}
 
+	pcapBase := filepath.Base(req.PcapPath)
+
 	for _, entry := range entries {
 		if entry.IsDir() {
+			continue
+		}
+
+		filename := entry.Name()
+
+		if filename == pcapBase {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(filename))
+		if ext == ".pcap" || ext == ".cap" || ext == ".pcapng" {
 			continue
 		}
 

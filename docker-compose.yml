@@ -15,12 +15,6 @@ x-zeek-runner-common: &zeek-runner-common
     options:
       max-size: "100m"
       max-file: "3"
-  healthcheck: &zeek-runner-healthcheck
-    test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/healthz"]
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 10s
 
 services:
   redis:
@@ -39,7 +33,7 @@ services:
         max-size: "50m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "zeek_redis_1949", "ping"]
+      test: ["CMD", "redis-cli", "-a", "xx", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

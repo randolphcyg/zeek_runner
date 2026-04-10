@@ -1,7 +1,7 @@
 redis:
-  addr: "192.168.1.12:6379"
-  password: "zeek_redis_1949"
-  db: 3
+  addr: "192.168.xx.xx:6379"
+  password: "xx"
+  db: 1
   poolSize: 100
   minIdleConns: 10
   maxRetries: 3
@@ -13,7 +13,7 @@ redis:
   connMaxIdleTime: "10m"
 
 kafka:
-  brokers: "192.168.1.12:9092"
+  brokers: "192.168.xx.xx:9092"
   topic: "zeek_logs"
 
 pool:
@@ -53,4 +53,4 @@ file:
 
 otel:
   enabled: false
-  endpoint: "192.168.1.12:4317"
+  endpoint: "192.168.xx.xx:14317"

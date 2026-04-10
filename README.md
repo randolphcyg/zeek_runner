@@ -22,12 +22,21 @@ https://github.com/randolphcyg/zeek-kafka/
 # 基础镜像
 docker pull golang:1.26-alpine --platform linux/amd64
 docker pull zeek/zeek:8.1.1 --platform linux/amd64
+docker pull jaegertracing/jaeger:2.17.0 --platform linux/amd64
 
-docker build -t zeek_runner:latest . --platform linux/amd64
+docker build -t zeek_runner:4.0 . --platform linux/amd64
 # 指定国内仓库
 docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:latest . --platform linux/amd64
 # 容器导出
-docker save zeek_runner:latest  | gzip > zeek_runner.tar.gz
+docker save zeek_runner:4.0  | gzip > zeek_runner.tar.gz
+docker save redis:8-alpine | gzip > redis.tar.gz
+docker save nginx:1.28-alpine | gzip > nginx.tar.gz
+docker save jaegertracing/jaeger:2.17.0 | gzip > jaeger.tar.gz
+
+docker load -i zeek_runner.tar.gz
+docker load -i redis.tar.gz
+docker load -i nginx.tar.gz
+docker load -i jaeger.tar.gz
 ```
 
 #### 离线部署
@@ -50,15 +59,15 @@ chmod +x build_offline.sh
 # ├── deploy.sh                    # 部署脚本
 # └── uninstall.sh                 # 卸载脚本
 
-# 2. 传输到目标服务器
-scp -r offline_package user@server:/opt/zeek_runner_offline/
+# 2.# 2. 传输到目标服务器
+scp -r offline_package user@server:/data/zeek_runner/
 
 # 3. 在目标服务器执行部署
-cd /opt/zeek_runner_offline
+cd /data/zeek_runner/
 ./deploy.sh
 
 # 4. 编辑配置文件（设置 Redis 密码、Kafka 地址等）
-sudo vi /opt/zeek_runner/config.yaml
+sudo vi /data/zeek_runner/config.yaml
 
 # 5. 重启服务
 docker-compose restart
@@ -85,11 +94,11 @@ docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
-  -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
+  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
+  -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
   --log-driver json-file \
   --log-opt max-size=100m \
   --log-opt max-file=3 \
@@ -102,10 +111,10 @@ docker run -d \
   -p 50051:50051 \
   -e KAFKA_BROKERS="192.168.2.6:9092" \
   -e AUTH_TOKENS="token1,token2" \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
-  -v /opt/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
+  -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
   zeek_runner:latest
 ```
 
@@ -266,7 +275,7 @@ grpc:
     - "token2-change-me"
 
 file:
-  extractPath: "/opt/zeek_runner/extracted"
+  extractPath: "/data/zeek_runner/extracted"
   minSizeKB: 20
 ```
 
@@ -318,27 +327,27 @@ docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -e CONFIG_FILE="/opt/zeek_runner/config.yaml" \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  -e CONFIG_FILE="/data/zeek_runner/config.yaml" \
+  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
 
 # 方式二：使用默认路径（自动检测）
 # 服务会按顺序检测以下路径：
 # 1. /etc/zeek_runner/config.yaml
-# 2. /opt/zeek_runner/config.yaml
+# 2. /data/zeek_runner/config.yaml
 # 3. ./config.yaml
 # 4. ./config/config.yaml
 docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
 ```
 
@@ -462,10 +471,10 @@ docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
 ```
 
@@ -520,10 +529,10 @@ docker run -d \
   --name zeek_runner_1 \
   -p 8001:8000 \
   -p 50051:50051 \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
 
 # 实例 2
@@ -531,10 +540,10 @@ docker run -d \
   --name zeek_runner_2 \
   -p 8002:8000 \
   -p 50052:50051 \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
 
 # 实例 3
@@ -542,10 +551,10 @@ docker run -d \
   --name zeek_runner_3 \
   -p 8003:8000 \
   -p 50053:50051 \
-  -v /opt/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
-  -v /opt/zeek_runner/scripts:/opt/zeek_runner/scripts \
-  -v /opt/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
-  -v /opt/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
 ```
 
@@ -563,66 +572,87 @@ docker run -d \
 
 ### 文件提取去重
 
-服务采用**双层去重架构**，最大化节省存储和 IO：
+服务采用**任务内去重策略**，防止批量下载场景下的重复文件浪费存储：
 
-#### 架构设计
+#### 设计原则
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Zeek 层（任务内去重）                                            │
-│  • 同一任务内相同 hash 文件只提取一次                               │
-│  • 后续重复文件跳过提取，只记录元数据到 Kafka                        │
-│  • 输出日志：DUPLICATE_IN_TASK: hash=xxx count=2                 │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  Go 层（跨任务去重，需要 Redis）                                   │
-│  • 不同任务间相同 hash 文件只保留一份                               │
-│  • 删除重复文件，更新 Redis 引用计数                                │
-│  • 输出日志：duplicate file removed hash=xxx refCount=3          │
+│  任务内去重（基于 Redis，过期时间 24 小时）                            │
+│  • 同一任务内相同 hash 文件只保留一份                                │
+│  • 后续重复文件跳过物理存储，增加引用计数                           │
+│  • 不同任务之间的文件完全隔离，互不影响                             │
+│  • 输出日志：duplicate file in task detected hash=xxx            │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+#### 为什么不用跨任务去重？
+
+| 问题 | 跨任务去重 ❌ | 任务内去重 ✅ |
+|------|--------------|--------------|
+| 历史文件被清理 | 引用计数还在，但物理文件已删除 | 每个任务独立存储，不受影响 |
+| Zeek 脚本更新 | 旧脚本提取的文件可能被新脚本覆盖 | 任务隔离，实验可重复 |
+| 存储管理复杂 | 需要全局引用计数和垃圾回收 | 任务结束后文件可安全清理 |
 
 #### 工作流程
 
-**Zeek 层（任务内）**：
-1. 文件开始提取时计算 SHA256 哈希
-2. 检查任务内哈希表是否已存在
-3. 如果存在：跳过提取，记录 `DUPLICATE_IN_TASK` 日志
-4. 如果不存在：提取文件，注册哈希到任务表
+1. **计算哈希**：Zeek 任务完成后，Go 层扫描提取目录，计算每个文件 SHA256
+2. **任务内检查**：查询 Redis `zeek:file:task:{taskID}:hash:{hash}` 是否存在
+3. **重复文件**：
+   - 如果存在：跳过物理存储，增加 `ref_count`
+   - 输出日志：`duplicate file in task detected`
+4. **新文件**：
+   - 注册到 Redis，设置 24 小时过期时间
+   - 输出日志：`file registered in task`
 
-**Go 层（跨任务）**：
-1. Zeek 任务完成后，扫描提取目录
-2. 计算每个文件的 SHA256 哈希
-3. 查询 Redis 检查哈希是否已存在
-4. 如果存在：删除文件，增加引用计数
-5. 如果不存在：注册新文件到 Redis
+#### Redis Key 结构
+
+```
+# 任务内去重（主要）
+zeek:file:task:{taskID}:hash:{hash} → FileRecord JSON
+
+# 路径反查（辅助）
+zeek:file:path:{filePath} → hash
+```
 
 #### 优势对比
 
-| 场景 | 无去重 | Zeek 层去重 | 双层去重 |
-|------|--------|-------------|----------|
-| 任务内 100 次相同文件 | 提取 100 个 | 提取 1 个 | 提取 1 个 |
-| 跨任务 10 次相同文件 | 提取 10 个 | 提取 10 个 | 提取 1 个 |
-| 存储 IO | 100% | 1% | 1% |
-| 持久化存储 | 100% | 100% | 1% |
+| 场景 | 无去重 | 任务内去重 |
+|------|--------|------------|
+| 任务内 100 次相同文件 | 提取 100 个 | 提取 1 个 ✅ |
+| 不同任务相同文件 | 提取 N 个 | 提取 N 个（隔离）✅ |
+| 批量下载流量包 | 浪费 100 倍空间 | 只存 1 份 ✅ |
+| 历史文件清理 | 影响其他任务 | 互不影响 ✅ |
+| 实验可重复性 | 可能被覆盖 | 完全隔离 ✅ |
 
 #### 日志示例
 
-```
-# Zeek 层日志
-FILE_EXTRACTED: file=malware.exe size=1024000 hash=abc123... mime=application/x-dosexec
-DUPLICATE_IN_TASK: hash=abc123... task=task-001 count=2 existing=/path/malware.exe
-TASK_SUMMARY: task=task-001 unique_files=5 total_duplicates=95
+```json
+// 新文件注册
+{
+  "time": "2026-04-10T14:56:59.041Z",
+  "level": "INFO",
+  "msg": "file registered in task",
+  "hash": "d1c925edf5352cf1",
+  "path": "/data/zeek/extracted/task-001/geektime-rust-master.zip",
+  "taskID": "7f44ea95e57b9bb8416b55a93d01b315"
+}
 
-# Go 层日志
-new file registered: file=malware.exe hash=abc123... size=1024000
-duplicate file removed: file=malware.exe hash=abc123... original=/path/malware.exe refCount=2
+// 任务内重复文件
+{
+  "time": "2026-04-10T14:56:59.041Z",
+  "level": "INFO",
+  "msg": "duplicate file in task detected",
+  "hash": "26ed3bde1930d8c5",
+  "newPath": "/data/zeek/extracted/task-001/extract-1712541417.830875-SSL-FAjUIj3Y8rG4VuqAqc",
+  "existingPath": "/data/zeek/extracted/task-001/extract-1712541417.830875-SSL-Fp2coG1XPb9TSjio1g",
+  "taskID": "7f44ea95e57b9bb8416b55a93d01b315"
+}
 ```
 
 #### 前置服务消费 Kafka
 
-前置服务消费 Kafka 时可根据 hash 字段判断：
+前置服务消费 Kafka 时可根据 `sha256` 字段判断文件是否重复：
 
 ```json
 {
@@ -641,9 +671,9 @@ duplicate file removed: file=malware.exe hash=abc123... original=/path/malware.e
 ```
 
 **处理逻辑**：
-1. 检查 `file.extracted` 是否以 `DUPLICATE:` 开头
-2. 如果是重复文件，使用 hash 查询已存在的文件路径
-3. 如果是新文件，正常处理并记录 hash
+1. 正常处理每个文件，记录 `sha256` 和 `extracted` 路径
+2. 如果同一任务内收到相同 `sha256`，说明是重复文件
+3. 可根据需要选择保留最新路径或忽略
 
 ### 配置热更新
 
@@ -706,8 +736,8 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
-    "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
+    "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+    "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": true,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
     "taskID": "2333",
@@ -722,8 +752,8 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
-    "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
+    "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+    "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": true,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
     "taskID": "2333",
@@ -742,8 +772,8 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
-    "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
+    "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+    "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": false,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
     "taskID": "1212",
@@ -758,7 +788,7 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
+    "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
   }' \
   http://localhost:8000/api/v1/syntax-check
 
@@ -823,9 +853,9 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
   "onlyNotice": true,
   "pcapID": "pcap-001",
-  "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
+  "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
   "scriptID": "script-001",
-  "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
+  "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/Analyze
 
 # 异步分析接口（需要 Redis）- 立即返回任务ID
@@ -834,9 +864,9 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
   "onlyNotice": true,
   "pcapID": "pcap-001",
-  "pcapPath": "/opt/zeek_runner/pcaps/sshguess.pcap",
+  "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
   "scriptID": "script-001",
-  "scriptPath": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
+  "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/AsyncAnalyze
 
 # 查询任务状态
@@ -846,7 +876,7 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
 
 # Zeek 脚本语法检查 - 通过文件路径
 grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
-  "script_path": "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
+  "script_path": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/ZeekSyntaxCheck
 
 # Zeek 脚本语法检查 - 通过脚本内容
@@ -914,9 +944,9 @@ func main() {
         Uuid:       "test-uuid-001",
         OnlyNotice: true,
         PcapID:     "pcap-001",
-        PcapPath:   "/opt/zeek_runner/pcaps/sshguess.pcap",
+        PcapPath:   "/data/zeek_runner/pcaps/sshguess.pcap",
         ScriptID:   "script-001",
-        ScriptPath: "/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
+        ScriptPath: "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     })
     if err != nil {
         log.Fatalf("could not analyze: %v", err)
@@ -945,8 +975,8 @@ for i in {1..10}; do
     -H "User-Agent: test" \
     -H "Authorization: $TOKEN" \
     -d "{
-      \"pcapPath\": \"/opt/zeek_runner/pcaps/sshguess.pcap\",
-      \"scriptPath\": \"/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
+      \"pcapPath\": \"/data/zeek_runner/pcaps/sshguess.pcap\",
+      \"scriptPath\": \"/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
       \"onlyNotice\": true,
       \"taskID\": \"test-$i\",
       \"uuid\": \"uuid-$i\",
@@ -968,8 +998,8 @@ for i in {1..10}; do
       \"taskID\": \"grpc-test-$i\",
       \"uuid\": \"grpc-uuid-$i\",
       \"onlyNotice\": true,
-      \"pcapPath\": \"/opt/zeek_runner/pcaps/sshguess.pcap\",
-      \"scriptPath\": \"/opt/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
+      \"pcapPath\": \"/data/zeek_runner/pcaps/sshguess.pcap\",
+      \"scriptPath\": \"/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
       \"pcapID\": \"pcap-$i\",
       \"scriptID\": \"script-$i\"
     }" \
@@ -1128,8 +1158,8 @@ curl -X POST \
   -d '{
     "extractedFilePath": "/path/for/save/extracted/files",
     "extractedFileMinSize": 20,
-    "pcapPath": "/opt/zeek_runner/file_extract_scripts/xxx.pcap",
-    "scriptPath": "/opt/zeek_runner/file_extract_scripts/extract_http.zeek",
+    "pcapPath": "/data/zeek_runner/file_extract_scripts/xxx.pcap",
+    "scriptPath": "/data/zeek_runner/file_extract_scripts/extract_http.zeek",
     "uuid": "233",
     "taskID": "122",
     "pcapID": "pcap-001",

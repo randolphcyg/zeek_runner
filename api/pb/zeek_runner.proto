@@ -88,7 +88,7 @@ message AsyncAnalyzeResponse {
 
 // 任务状态查询请求
 message TaskStatusRequest {
-  string taskID = 1;           // 任务ID
+  string uuid = 1;             // 子任务UUID
 }
 
 // 任务状态查询响应
@@ -109,11 +109,40 @@ message TaskStatusResponse {
   int32 retries = 14;          // 重试次数
 }
 
+// 父任务状态查询请求
+message ParentTaskStatusRequest {
+  string taskID = 1;           // 父任务ID
+}
+
+// 子任务摘要
+message SubTaskSummary {
+  string uuid = 1;             // 子任务UUID
+  string scriptID = 2;         // 脚本ID
+  string scriptPath = 3;       // 脚本路径
+  string status = 4;           // 状态
+  double duration = 5;         // 执行时长(秒)
+  string error = 6;            // 错误信息
+}
+
+// 父任务状态查询响应
+message ParentTaskStatusResponse {
+  string taskID = 1;           // 父任务ID
+  int32 totalCount = 2;        // 总子任务数
+  int32 pendingCount = 3;      // 待处理数
+  int32 runningCount = 4;      // 运行中数
+  int32 successCount = 5;      // 成功数
+  int32 failedCount = 6;       // 失败数
+  int32 timeoutCount = 7;      // 超时数
+  string status = 8;           // 聚合状态: pending/running/completed/partial_failed/failed
+  repeated SubTaskSummary subTasks = 9; // 子任务列表
+}
+
 // gRPC服务定义
 service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
   rpc AsyncAnalyze(AsyncAnalyzeRequest) returns (AsyncAnalyzeResponse) {}
   rpc GetTaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
+  rpc GetParentTaskStatus(ParentTaskStatusRequest) returns (ParentTaskStatusResponse) {}
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
   rpc VersionCheck(VersionCheckRequest) returns (VersionCheckResponse) {}
   rpc ZeekSyntaxCheck(ZeekSyntaxCheckRequest) returns (ZeekSyntaxCheckResponse) {}

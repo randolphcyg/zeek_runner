@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ZeekAnalysisService_Analyze_FullMethodName         = "/zeek_runner.ZeekAnalysisService/Analyze"
-	ZeekAnalysisService_AsyncAnalyze_FullMethodName    = "/zeek_runner.ZeekAnalysisService/AsyncAnalyze"
-	ZeekAnalysisService_GetTaskStatus_FullMethodName   = "/zeek_runner.ZeekAnalysisService/GetTaskStatus"
-	ZeekAnalysisService_HealthCheck_FullMethodName     = "/zeek_runner.ZeekAnalysisService/HealthCheck"
-	ZeekAnalysisService_VersionCheck_FullMethodName    = "/zeek_runner.ZeekAnalysisService/VersionCheck"
-	ZeekAnalysisService_ZeekSyntaxCheck_FullMethodName = "/zeek_runner.ZeekAnalysisService/ZeekSyntaxCheck"
+	ZeekAnalysisService_Analyze_FullMethodName             = "/zeek_runner.ZeekAnalysisService/Analyze"
+	ZeekAnalysisService_AsyncAnalyze_FullMethodName        = "/zeek_runner.ZeekAnalysisService/AsyncAnalyze"
+	ZeekAnalysisService_GetTaskStatus_FullMethodName       = "/zeek_runner.ZeekAnalysisService/GetTaskStatus"
+	ZeekAnalysisService_GetParentTaskStatus_FullMethodName = "/zeek_runner.ZeekAnalysisService/GetParentTaskStatus"
+	ZeekAnalysisService_HealthCheck_FullMethodName         = "/zeek_runner.ZeekAnalysisService/HealthCheck"
+	ZeekAnalysisService_VersionCheck_FullMethodName        = "/zeek_runner.ZeekAnalysisService/VersionCheck"
+	ZeekAnalysisService_ZeekSyntaxCheck_FullMethodName     = "/zeek_runner.ZeekAnalysisService/ZeekSyntaxCheck"
 )
 
 // ZeekAnalysisServiceClient is the client API for ZeekAnalysisService service.
@@ -36,6 +37,7 @@ type ZeekAnalysisServiceClient interface {
 	Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error)
 	AsyncAnalyze(ctx context.Context, in *AsyncAnalyzeRequest, opts ...grpc.CallOption) (*AsyncAnalyzeResponse, error)
 	GetTaskStatus(ctx context.Context, in *TaskStatusRequest, opts ...grpc.CallOption) (*TaskStatusResponse, error)
+	GetParentTaskStatus(ctx context.Context, in *ParentTaskStatusRequest, opts ...grpc.CallOption) (*ParentTaskStatusResponse, error)
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 	VersionCheck(ctx context.Context, in *VersionCheckRequest, opts ...grpc.CallOption) (*VersionCheckResponse, error)
 	ZeekSyntaxCheck(ctx context.Context, in *ZeekSyntaxCheckRequest, opts ...grpc.CallOption) (*ZeekSyntaxCheckResponse, error)
@@ -73,6 +75,16 @@ func (c *zeekAnalysisServiceClient) GetTaskStatus(ctx context.Context, in *TaskS
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TaskStatusResponse)
 	err := c.cc.Invoke(ctx, ZeekAnalysisService_GetTaskStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zeekAnalysisServiceClient) GetParentTaskStatus(ctx context.Context, in *ParentTaskStatusRequest, opts ...grpc.CallOption) (*ParentTaskStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ParentTaskStatusResponse)
+	err := c.cc.Invoke(ctx, ZeekAnalysisService_GetParentTaskStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +130,7 @@ type ZeekAnalysisServiceServer interface {
 	Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error)
 	AsyncAnalyze(context.Context, *AsyncAnalyzeRequest) (*AsyncAnalyzeResponse, error)
 	GetTaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error)
+	GetParentTaskStatus(context.Context, *ParentTaskStatusRequest) (*ParentTaskStatusResponse, error)
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
 	VersionCheck(context.Context, *VersionCheckRequest) (*VersionCheckResponse, error)
 	ZeekSyntaxCheck(context.Context, *ZeekSyntaxCheckRequest) (*ZeekSyntaxCheckResponse, error)
@@ -139,6 +152,9 @@ func (UnimplementedZeekAnalysisServiceServer) AsyncAnalyze(context.Context, *Asy
 }
 func (UnimplementedZeekAnalysisServiceServer) GetTaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTaskStatus not implemented")
+}
+func (UnimplementedZeekAnalysisServiceServer) GetParentTaskStatus(context.Context, *ParentTaskStatusRequest) (*ParentTaskStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetParentTaskStatus not implemented")
 }
 func (UnimplementedZeekAnalysisServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
@@ -224,6 +240,24 @@ func _ZeekAnalysisService_GetTaskStatus_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZeekAnalysisService_GetParentTaskStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ParentTaskStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZeekAnalysisServiceServer).GetParentTaskStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZeekAnalysisService_GetParentTaskStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZeekAnalysisServiceServer).GetParentTaskStatus(ctx, req.(*ParentTaskStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZeekAnalysisService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthCheckRequest)
 	if err := dec(in); err != nil {
@@ -296,6 +330,10 @@ var ZeekAnalysisService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTaskStatus",
 			Handler:    _ZeekAnalysisService_GetTaskStatus_Handler,
+		},
+		{
+			MethodName: "GetParentTaskStatus",
+			Handler:    _ZeekAnalysisService_GetParentTaskStatus_Handler,
 		},
 		{
 			MethodName: "HealthCheck",
