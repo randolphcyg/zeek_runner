@@ -87,12 +87,16 @@ func NewFileDedupManager(redisAddr, redisPassword string, redisDB int, poolCfg *
 	return &FileDedupManager{
 		redis:      rdb,
 		prefix:     "zeek:file:",
-		expiration: 7 * 24 * time.Hour,
+		expiration: 24 * time.Hour, // 缩短为 1 天，只保证单个任务周期内去重
 	}
 }
 
 func (fdm *FileDedupManager) hashKey(hash string) string {
 	return fdm.prefix + "hash:" + hash
+}
+
+func (fdm *FileDedupManager) taskFileKey(taskID, hash string) string {
+	return fdm.prefix + "task:" + taskID + ":hash:" + hash
 }
 
 func (fdm *FileDedupManager) pathKey(filePath string) string {
@@ -114,8 +118,9 @@ func (fdm *FileDedupManager) CalculateFileHash(filePath string) (string, error) 
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func (fdm *FileDedupManager) CheckDuplicate(ctx context.Context, hash string) (*FileRecord, bool, error) {
-	key := fdm.hashKey(hash)
+// CheckDuplicateInTask 检查任务内是否重复（而不是全局）
+func (fdm *FileDedupManager) CheckDuplicateInTask(ctx context.Context, taskID, hash string) (*FileRecord, bool, error) {
+	key := fdm.taskFileKey(taskID, hash)
 	data, err := fdm.redis.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		return nil, false, nil
@@ -132,17 +137,19 @@ func (fdm *FileDedupManager) CheckDuplicate(ctx context.Context, hash string) (*
 	return &record, true, nil
 }
 
-func (fdm *FileDedupManager) RegisterFile(ctx context.Context, record *FileRecord) error {
+func (fdm *FileDedupManager) RegisterFileInTask(ctx context.Context, record *FileRecord) error {
 	data, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("failed to marshal record: %w", err)
 	}
 
-	hashKey := fdm.hashKey(record.Hash)
+	// 任务内去重 key
+	taskFileKey := fdm.taskFileKey(record.TaskID, record.Hash)
+	// 全局路径 key（用于清理）
 	pathKey := fdm.pathKey(record.FilePath)
 
 	pipe := fdm.redis.Pipeline()
-	pipe.Set(ctx, hashKey, data, fdm.expiration)
+	pipe.Set(ctx, taskFileKey, data, fdm.expiration)
 	pipe.Set(ctx, pathKey, record.Hash, fdm.expiration)
 	_, err = pipe.Exec(ctx)
 
@@ -150,25 +157,8 @@ func (fdm *FileDedupManager) RegisterFile(ctx context.Context, record *FileRecor
 		return fmt.Errorf("failed to register file: %w", err)
 	}
 
-	slog.Info("file registered", "hash", record.Hash[:16], "path", record.FilePath)
+	slog.Info("file registered in task", "hash", record.Hash[:16], "path", record.FilePath, "taskID", record.TaskID)
 	return nil
-}
-
-func (fdm *FileDedupManager) IncrementRefCount(ctx context.Context, hash string) error {
-	key := fdm.hashKey(hash)
-	data, err := fdm.redis.Get(ctx, key).Bytes()
-	if err != nil {
-		return fmt.Errorf("file not found: %s", hash)
-	}
-
-	var record FileRecord
-	if err := json.Unmarshal(data, &record); err != nil {
-		return err
-	}
-
-	record.RefCount++
-	recordJSON, _ := json.Marshal(record)
-	return fdm.redis.Set(ctx, key, recordJSON, fdm.expiration).Err()
 }
 
 func (fdm *FileDedupManager) ProcessExtractedFile(ctx context.Context, filePath, sourceURL, taskID string) (*FileRecord, bool, error) {
@@ -177,26 +167,22 @@ func (fdm *FileDedupManager) ProcessExtractedFile(ctx context.Context, filePath,
 		return nil, false, err
 	}
 
-	existingRecord, isDuplicate, err := fdm.CheckDuplicate(ctx, hash)
+	// ✅ 只检查任务内是否重复
+	existingRecord, isDuplicate, err := fdm.CheckDuplicateInTask(ctx, taskID, hash)
 	if err != nil {
 		return nil, false, err
 	}
 
 	if isDuplicate {
-		slog.Info("duplicate file detected",
+		slog.Info("duplicate file in task detected",
 			"hash", hash[:16],
 			"newPath", filePath,
 			"existingPath", existingRecord.FilePath,
-			"refCount", existingRecord.RefCount+1,
+			"taskID", taskID,
 		)
 
-		if err := os.Remove(filePath); err != nil {
-			slog.Warn("failed to remove duplicate file", "path", filePath, "err", err)
-		} else {
-			slog.Info("duplicate file removed", "path", filePath)
-		}
-
-		if err := fdm.IncrementRefCount(ctx, hash); err != nil {
+		// 任务内重复：增加引用计数
+		if err := fdm.IncrementRefCount(ctx, taskID, hash); err != nil {
 			slog.Warn("failed to increment ref count", "hash", hash[:16], "err", err)
 		}
 		existingRecord.RefCount++
@@ -219,26 +205,33 @@ func (fdm *FileDedupManager) ProcessExtractedFile(ctx context.Context, filePath,
 		TaskID:    taskID,
 	}
 
-	if err := fdm.RegisterFile(ctx, record); err != nil {
+	if err := fdm.RegisterFileInTask(ctx, record); err != nil {
 		return nil, false, err
 	}
 
 	return record, false, nil
 }
 
-func (fdm *FileDedupManager) GetFileStats(ctx context.Context, hash string) (*FileRecord, error) {
-	key := fdm.hashKey(hash)
+func (fdm *FileDedupManager) IncrementRefCount(ctx context.Context, taskID, hash string) error {
+	key := fdm.taskFileKey(taskID, hash)
 	data, err := fdm.redis.Get(ctx, key).Bytes()
 	if err != nil {
-		return nil, fmt.Errorf("file not found: %s", hash)
+		return fmt.Errorf("file not found in task: %s", hash)
 	}
 
 	var record FileRecord
 	if err := json.Unmarshal(data, &record); err != nil {
-		return nil, err
+		return err
 	}
 
-	return &record, nil
+	record.RefCount++
+	recordJSON, _ := json.Marshal(record)
+	return fdm.redis.Set(ctx, key, recordJSON, fdm.expiration).Err()
+}
+
+func (fdm *FileDedupManager) GetFileStats(ctx context.Context, hash string) (*FileRecord, error) {
+	// 这个方法不再使用，因为现在是任务内去重
+	return nil, fmt.Errorf("deprecated: use task-specific methods")
 }
 
 func (fdm *FileDedupManager) HealthCheck(ctx context.Context) error {

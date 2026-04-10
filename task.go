@@ -44,11 +44,12 @@ type Task struct {
 }
 
 type TaskManager struct {
-	redis      *redis.Client
-	prefix     string
-	queueKey   string
-	expiration time.Duration
-	instanceID string
+	redis           *redis.Client
+	prefix          string
+	parentKeyPrefix string
+	queueKey        string
+	expiration      time.Duration
+	instanceID      string
 }
 
 type RedisPoolConfig struct {
@@ -117,11 +118,12 @@ func NewTaskManager(redisAddr, redisPassword string, redisDB int, poolCfg *Redis
 	instanceID := generateInstanceID()
 
 	return &TaskManager{
-		redis:      rdb,
-		prefix:     "zeek:task:",
-		queueKey:   "zeek:task:queue",
-		expiration: 24 * time.Hour,
-		instanceID: instanceID,
+		redis:           rdb,
+		prefix:          "zeek:task:",
+		parentKeyPrefix: "zeek:parent_task:",
+		queueKey:        "zeek:task:queue",
+		expiration:      24 * time.Hour,
+		instanceID:      instanceID,
 	}
 }
 
@@ -130,8 +132,12 @@ func generateInstanceID() string {
 	return fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano()%10000)
 }
 
-func (tm *TaskManager) key(taskID string) string {
-	return tm.prefix + taskID
+func (tm *TaskManager) key(uuid string) string {
+	return tm.prefix + uuid
+}
+
+func (tm *TaskManager) parentKey(taskID string) string {
+	return tm.parentKeyPrefix + taskID
 }
 
 func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, error) {
@@ -154,16 +160,97 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, e
 		return nil, err
 	}
 
+	tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusPending, "")
+
 	slog.Info("task created", "taskID", task.TaskID, "uuid", task.UUID)
 	return task, nil
 }
 
-func (tm *TaskManager) UpdateStatus(ctx context.Context, taskID string, status TaskStatus) error {
-	task, err := tm.GetTask(ctx, taskID)
+func (tm *TaskManager) updateParentTaskStatus(ctx context.Context, taskID string, newStatus TaskStatus, oldStatus TaskStatus) {
+	key := tm.parentKey(taskID)
+
+	data, err := tm.redis.Get(ctx, key).Bytes()
+	var status ParentTaskStatus
+	if err == nil {
+		json.Unmarshal(data, &status)
+	} else {
+		status = ParentTaskStatus{TaskID: taskID}
+	}
+
+	if oldStatus != "" {
+		switch oldStatus {
+		case TaskStatusPending:
+			status.PendingCount--
+		case TaskStatusRunning:
+			status.RunningCount--
+		case TaskStatusSuccess:
+			status.SuccessCount--
+		case TaskStatusFailed:
+			status.FailedCount--
+		case TaskStatusTimeout:
+			status.TimeoutCount--
+		}
+	} else {
+		status.TotalCount++
+	}
+
+	switch newStatus {
+	case TaskStatusPending:
+		status.PendingCount++
+	case TaskStatusRunning:
+		status.RunningCount++
+	case TaskStatusSuccess:
+		status.SuccessCount++
+	case TaskStatusFailed:
+		status.FailedCount++
+	case TaskStatusTimeout:
+		status.TimeoutCount++
+	}
+
+	status.Status = tm.deriveParentStatus(&status)
+
+	data, _ = json.Marshal(status)
+	tm.redis.Set(ctx, key, data, tm.expiration)
+}
+
+func (tm *TaskManager) deriveParentStatus(s *ParentTaskStatus) string {
+	if s.TotalCount == 0 {
+		return "pending"
+	}
+	if s.PendingCount > 0 || s.RunningCount > 0 {
+		return "running"
+	}
+	if s.FailedCount == s.TotalCount {
+		return "failed"
+	}
+	if s.FailedCount > 0 || s.TimeoutCount > 0 {
+		return "partial_failed"
+	}
+	return "completed"
+}
+
+func (tm *TaskManager) GetParentTaskStatusFromRedis(ctx context.Context, taskID string) (*ParentTaskStatus, error) {
+	key := tm.parentKey(taskID)
+	data, err := tm.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("parent task not found: %s", taskID)
+	}
+
+	var status ParentTaskStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal parent task status: %w", err)
+	}
+
+	return &status, nil
+}
+
+func (tm *TaskManager) UpdateStatus(ctx context.Context, uuid string, status TaskStatus) error {
+	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
 		return err
 	}
 
+	oldStatus := task.Status
 	task.Status = status
 
 	switch status {
@@ -176,67 +263,101 @@ func (tm *TaskManager) UpdateStatus(ctx context.Context, taskID string, status T
 		}
 	}
 
-	return tm.saveTask(ctx, task)
+	if err := tm.saveTask(ctx, task); err != nil {
+		return err
+	}
+
+	if oldStatus != status {
+		tm.updateParentTaskStatus(ctx, task.TaskID, status, oldStatus)
+	}
+
+	return nil
 }
 
-func (tm *TaskManager) SetRunning(ctx context.Context, taskID string) error {
-	return tm.UpdateStatus(ctx, taskID, TaskStatusRunning)
+func (tm *TaskManager) SetRunning(ctx context.Context, uuid string) error {
+	return tm.UpdateStatus(ctx, uuid, TaskStatusRunning)
 }
 
-func (tm *TaskManager) SetSuccess(ctx context.Context, taskID string, output string) error {
-	task, err := tm.GetTask(ctx, taskID)
+func (tm *TaskManager) SetSuccess(ctx context.Context, uuid string, output string) error {
+	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
 		return err
 	}
+
+	oldStatus := task.Status
 	task.Status = TaskStatusSuccess
 	task.EndTime = time.Now()
 	if !task.StartTime.IsZero() {
 		task.Duration = task.EndTime.Sub(task.StartTime).Seconds()
 	}
 	task.Output = output
-	return tm.saveTask(ctx, task)
+
+	if err := tm.saveTask(ctx, task); err != nil {
+		return err
+	}
+
+	tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusSuccess, oldStatus)
+	return nil
 }
 
-func (tm *TaskManager) SetFailed(ctx context.Context, taskID string, errMsg string) error {
-	task, err := tm.GetTask(ctx, taskID)
+func (tm *TaskManager) SetFailed(ctx context.Context, uuid string, errMsg string) error {
+	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
 		return err
 	}
+
+	oldStatus := task.Status
 	task.Status = TaskStatusFailed
 	task.EndTime = time.Now()
 	if !task.StartTime.IsZero() {
 		task.Duration = task.EndTime.Sub(task.StartTime).Seconds()
 	}
 	task.Error = errMsg
-	return tm.saveTask(ctx, task)
+
+	if err := tm.saveTask(ctx, task); err != nil {
+		return err
+	}
+
+	tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusFailed, oldStatus)
+	return nil
 }
 
-func (tm *TaskManager) SetTimeout(ctx context.Context, taskID string) error {
-	return tm.UpdateStatus(ctx, taskID, TaskStatusTimeout)
+func (tm *TaskManager) SetTimeout(ctx context.Context, uuid string) error {
+	return tm.UpdateStatus(ctx, uuid, TaskStatusTimeout)
 }
 
-func (tm *TaskManager) IncrementRetry(ctx context.Context, taskID string) error {
-	task, err := tm.GetTask(ctx, taskID)
+func (tm *TaskManager) IncrementRetry(ctx context.Context, uuid string) error {
+	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
 		return err
 	}
+
+	oldStatus := task.Status
 	task.Retries++
 	task.Status = TaskStatusPending
-	return tm.saveTask(ctx, task)
+
+	if err := tm.saveTask(ctx, task); err != nil {
+		return err
+	}
+
+	if oldStatus != TaskStatusPending {
+		tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusPending, oldStatus)
+	}
+	return nil
 }
 
-func (tm *TaskManager) CanRetry(ctx context.Context, taskID string) (bool, error) {
-	task, err := tm.GetTask(ctx, taskID)
+func (tm *TaskManager) CanRetry(ctx context.Context, uuid string) (bool, error) {
+	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
 		return false, err
 	}
 	return task.Retries < task.MaxRetries, nil
 }
 
-func (tm *TaskManager) GetTask(ctx context.Context, taskID string) (*Task, error) {
-	data, err := tm.redis.Get(ctx, tm.key(taskID)).Bytes()
+func (tm *TaskManager) GetTask(ctx context.Context, uuid string) (*Task, error) {
+	data, err := tm.redis.Get(ctx, tm.key(uuid)).Bytes()
 	if err != nil {
-		return nil, fmt.Errorf("task not found: %s", taskID)
+		return nil, fmt.Errorf("task not found: %s", uuid)
 	}
 
 	var task Task
@@ -253,11 +374,11 @@ func (tm *TaskManager) saveTask(ctx context.Context, task *Task) error {
 		return fmt.Errorf("failed to marshal task: %w", err)
 	}
 
-	return tm.redis.Set(ctx, tm.key(task.TaskID), data, tm.expiration).Err()
+	return tm.redis.Set(ctx, tm.key(task.UUID), data, tm.expiration).Err()
 }
 
-func (tm *TaskManager) DeleteTask(ctx context.Context, taskID string) error {
-	return tm.redis.Del(ctx, tm.key(taskID)).Err()
+func (tm *TaskManager) DeleteTask(ctx context.Context, uuid string) error {
+	return tm.redis.Del(ctx, tm.key(uuid)).Err()
 }
 
 func (tm *TaskManager) ListPendingTasks(ctx context.Context) ([]*Task, error) {
@@ -295,6 +416,41 @@ func (tm *TaskManager) ListPendingTasks(ctx context.Context) ([]*Task, error) {
 	return tasks, nil
 }
 
+func (tm *TaskManager) GetTasksByParentID(ctx context.Context, taskID string) ([]*Task, error) {
+	var tasks []*Task
+	var cursor uint64
+
+	for {
+		keys, nextCursor, err := tm.redis.Scan(ctx, cursor, tm.prefix+"*", 100).Result()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, key := range keys {
+			data, err := tm.redis.Get(ctx, key).Bytes()
+			if err != nil {
+				continue
+			}
+
+			var task Task
+			if err := json.Unmarshal(data, &task); err != nil {
+				continue
+			}
+
+			if task.TaskID == taskID {
+				tasks = append(tasks, &task)
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return tasks, nil
+}
+
 func (tm *TaskManager) HealthCheck(ctx context.Context) error {
 	return tm.redis.Ping(ctx).Err()
 }
@@ -303,12 +459,12 @@ func (tm *TaskManager) Close() error {
 	return tm.redis.Close()
 }
 
-func (tm *TaskManager) EnqueueTask(ctx context.Context, taskID string) error {
-	err := tm.redis.RPush(ctx, tm.queueKey, taskID).Err()
+func (tm *TaskManager) EnqueueTask(ctx context.Context, uuid string) error {
+	err := tm.redis.RPush(ctx, tm.queueKey, uuid).Err()
 	if err != nil {
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
-	slog.Debug("task enqueued", "taskID", taskID, "instance", tm.instanceID)
+	slog.Debug("task enqueued", "uuid", uuid, "instance", tm.instanceID)
 	return nil
 }
 
@@ -325,17 +481,17 @@ func (tm *TaskManager) DequeueTask(ctx context.Context, timeout time.Duration) (
 		return "", fmt.Errorf("invalid dequeue result")
 	}
 
-	taskID := result[1]
-	slog.Debug("task dequeued", "taskID", taskID, "instance", tm.instanceID)
-	return taskID, nil
+	uuid := result[1]
+	slog.Debug("task dequeued", "uuid", uuid, "instance", tm.instanceID)
+	return uuid, nil
 }
 
 func (tm *TaskManager) GetQueueLength(ctx context.Context) (int64, error) {
 	return tm.redis.LLen(ctx, tm.queueKey).Result()
 }
 
-func (tm *TaskManager) AssignTask(ctx context.Context, taskID string) error {
-	task, err := tm.GetTask(ctx, taskID)
+func (tm *TaskManager) AssignTask(ctx context.Context, uuid string) error {
+	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
 		return err
 	}

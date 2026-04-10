@@ -39,26 +39,47 @@ export {
 # -------------------------------------------------------------------------
 function configure_kafka_stream(id: Log::ID) {
     # 1. 移除默认 Filter (避免写本地)
-    # 注意：如果该流没有 default filter，这行也不会报错
     Log::remove_filter(id, "default");
 
-    # 2. 处理 onlyNotice 逻辑
-    if (onlyNotice == "true" && id != Notice::LOG && id != TaskStatus::LOG) {
-        Log::disable_stream(id);
-        return;
+    # 2. 判断当前模式
+    local is_extract_mode = (getenv("EXTRACTED_FILE_PATH") != "");
+    local is_detect_mode = (onlyNotice == "true");
+    
+    # 3. 文件提取模式：只保留 Files 和 TaskStatus
+    if (is_extract_mode) {
+        if (id != Files::LOG && id != TaskStatus::LOG) {
+            Log::disable_stream(id);
+            return;
+        }
     }
+    # 4. 恶意检测模式：只保留 Notice 和 TaskStatus
+    else if (is_detect_mode) {
+        if (id != Notice::LOG && id != TaskStatus::LOG) {
+            Log::disable_stream(id);
+            return;
+        }
+    }
+    # 5. 全量校验模式：保留所有日志（默认）
 
-    # 3. 确定 Topic
+    # 6. 确定 Topic
     local topic = Kafka::topic_name;
     if (id == Notice::LOG) {
         topic = "zeek_notice";
-    } else if (id == TaskStatus::LOG) {
-        topic = "zeek_task_status";
     } else if (id == Files::LOG) {
         topic = "zeek_extract_files";
+    } else if (id == TaskStatus::LOG) {
+        # TaskStatus 根据模式选择 Topic
+        if (is_extract_mode) {
+            topic = "zeek_extract_files";
+        } else if (is_detect_mode) {
+            topic = "zeek_logs";
+        } else {
+            topic = "zeek_logs";
+        }
     }
+    # 其他日志默认使用 zeek_logs
 
-    # 4. 添加 Kafka Filter
+    # 7. 添加 Kafka Filter
     local filter_name = fmt("kafka-%s", id);
     local filter_config: Log::Filter = [
         $name = filter_name,

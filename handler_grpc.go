@@ -159,7 +159,7 @@ func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeReque
 }
 
 func (s *GRPCServer) GetTaskStatus(ctx context.Context, req *pb.TaskStatusRequest) (*pb.TaskStatusResponse, error) {
-	task, err := s.service.GetTaskStatus(ctx, req.TaskID)
+	task, err := s.service.GetTaskStatus(ctx, req.Uuid)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -179,5 +179,36 @@ func (s *GRPCServer) GetTaskStatus(ctx context.Context, req *pb.TaskStatusReques
 		Error:      task.Error,
 		Output:     task.Output,
 		Retries:    int32(task.Retries),
+	}, nil
+}
+
+func (s *GRPCServer) GetParentTaskStatus(ctx context.Context, req *pb.ParentTaskStatusRequest) (*pb.ParentTaskStatusResponse, error) {
+	parentStatus, err := s.service.GetParentTaskStatus(ctx, req.TaskID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	subTasks := make([]*pb.SubTaskSummary, len(parentStatus.SubTasks))
+	for i, task := range parentStatus.SubTasks {
+		subTasks[i] = &pb.SubTaskSummary{
+			Uuid:       task.UUID,
+			ScriptID:   task.ScriptID,
+			ScriptPath: task.ScriptPath,
+			Status:     string(task.Status),
+			Duration:   task.Duration,
+			Error:      task.Error,
+		}
+	}
+
+	return &pb.ParentTaskStatusResponse{
+		TaskID:       parentStatus.TaskID,
+		TotalCount:   int32(parentStatus.TotalCount),
+		PendingCount: int32(parentStatus.PendingCount),
+		RunningCount: int32(parentStatus.RunningCount),
+		SuccessCount: int32(parentStatus.SuccessCount),
+		FailedCount:  int32(parentStatus.FailedCount),
+		TimeoutCount: int32(parentStatus.TimeoutCount),
+		Status:       parentStatus.Status,
+		SubTasks:     subTasks,
 	}, nil
 }
