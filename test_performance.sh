@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TOKEN="token-dpi"
+TOKEN="your-token-here"
 TASK_COUNT=20
 
 echo "=========================================="
@@ -9,7 +9,7 @@ echo "=========================================="
 echo ""
 
 echo "=== 提交 $TASK_COUNT 个异步任务 ==="
-echo "HTTP URL: http://localhost:80 (负载均衡)"
+echo "HTTP URL: http://localhost:18080 (负载均衡)"
 echo ""
 
 start_time=$(date +%s)
@@ -28,7 +28,7 @@ for i in $(seq 1 $TASK_COUNT); do
             \"pcapID\": \"pcap-$i\",
             \"scriptID\": \"script-$i\"
         }" \
-        "http://localhost:80/api/v1/analyze/async" > /dev/null &
+        "http://localhost:18080/api/v1/analyze/async" > /dev/null &
 done
 
 wait

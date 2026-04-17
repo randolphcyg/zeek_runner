@@ -42,21 +42,21 @@ services:
     <<: *zeek-runner-common
     container_name: zeek_runner_1
     ports:
-      - "8001:8000"
+      - "18001:8000"
       - "50051:50051"
 
   zeek_runner_2:
     <<: *zeek-runner-common
     container_name: zeek_runner_2
     ports:
-      - "8002:8000"
+      - "18002:8000"
       - "50052:50051"
 
   zeek_runner_3:
     <<: *zeek-runner-common
     container_name: zeek_runner_3
     ports:
-      - "8003:8000"
+      - "18003:8000"
       - "50053:50051"
 
   nginx:
@@ -68,7 +68,7 @@ services:
       - zeek_runner_2
       - zeek_runner_3
     ports:
-      - "80:80"
+      - "18080:80"
       - "50050:50050"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
