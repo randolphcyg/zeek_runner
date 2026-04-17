@@ -2,7 +2,7 @@
 # Global Arguments
 # ===========================
 ARG ZEEK_VER=8.1.1
-ARG GO_VER=1.26-alpine
+ARG GO_VER=1.26.2-alpine
 ARG ZEEK_KAFKA_VER=2.2
 ARG APT_MIRROR
 
@@ -16,18 +16,15 @@ ARG APT_MIRROR
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN \
-    # 1. 自动配置国内源
     if [ -n "$APT_MIRROR" ]; then \
         sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list && \
         sed -i "s|security.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
     fi && \
-    # 2. 安装编译依赖
     apt-get update && \
     apt-get install -y --no-install-recommends \
         wget cmake make curl build-essential \
         libpcap-dev libssl-dev librdkafka-dev \
         libzmq5 libzmq3-dev cppzmq-dev && \
-    # 3. 下载并编译 zeek-kafka
     curl -L -o /zeek-kafka.tar.gz https://github.com/randolphcyg/zeek-kafka/archive/refs/tags/v${ZEEK_KAFKA_VER}.tar.gz && \
     tar -xzf /zeek-kafka.tar.gz -C / && \
     mv /zeek-kafka-${ZEEK_KAFKA_VER} /zeek-kafka && \
@@ -65,7 +62,6 @@ ENV TZ=Asia/Shanghai
 ARG APT_MIRROR
 
 RUN \
-    # 1. 配置源
     if [ -n "$APT_MIRROR" ]; then \
         sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list && \
         sed -i "s|security.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \

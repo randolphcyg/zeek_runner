@@ -1,4 +1,3 @@
-
 ### detect_dns_flood.zeek
 
 ```shell
@@ -147,4 +146,115 @@ curl -X POST \
     "taskID": "999999"
   }' \
   http://localhost:8000/api/v1/analyze
+```
+
+### detect_anomalous_traffic.zeek
+
+检测异常网络流量，使用 `generate_anomalous_traffic.py` 生成测试流量包：
+
+```shell
+# 1. 生成测试流量包
+python scripts/generate_anomalous_traffic.py
+# 输出: anomalous_traffic.pcap (约4MB，包含2000个2000字节数据包)
+
+# 2. 测试脚本
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: your-token-here" \
+  -d '{
+    "pcapPath": "/opt/zeek_runner/pcaps/anomalous_traffic.pcap",
+    "scriptPath": "/opt/zeek_runner/scripts/detect_anomalous_traffic.zeek",
+    "onlyNotice": true,
+    "uuid": "test-detect_anomalous_traffic",
+    "taskID": "test_anomalous_traffic"
+  }' \
+  http://localhost:8000/api/v1/analyze
+```
+
+### detect_file_tampering.zeek
+
+检测文件篡改行为，使用 `generate_file_tampering_traffic.py` 生成测试流量包：
+
+```shell
+# 1. 生成测试流量包
+python scripts/generate_file_tampering_traffic.py
+
+# 2. 测试脚本
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: your-token-here" \
+  -d '{
+    "pcapPath": "/opt/zeek_runner/pcaps/file_tampering.pcap",
+    "scriptPath": "/opt/zeek_runner/scripts/detect_file_tampering.zeek",
+    "onlyNotice": true,
+    "uuid": "test-detect_file_tampering",
+    "taskID": "test_file_tampering"
+  }' \
+  http://localhost:8000/api/v1/analyze
+```
+
+### detect_http_brute_force.zeek
+
+检测HTTP暴力破解攻击，使用 `generate_http_brute_force_traffic.py` 生成测试流量包：
+
+```shell
+# 1. 生成测试流量包
+python scripts/generate_http_brute_force_traffic.py
+
+# 2. 测试脚本
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: your-token-here" \
+  -d '{
+    "pcapPath": "/opt/zeek_runner/pcaps/http_brute_force.pcap",
+    "scriptPath": "/opt/zeek_runner/scripts/detect_http_brute_force.zeek",
+    "onlyNotice": true,
+    "uuid": "test-detect_http_brute_force",
+    "taskID": "test_http_brute_force"
+  }' \
+  http://localhost:8000/api/v1/analyze
+```
+
+### detect_http_cmd_injection.zeek
+
+检测HTTP命令注入攻击：
+
+```shell
+# 测试脚本
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: your-token-here" \
+  -d '{
+    "pcapPath": "/zeek_runner/pcaps/exploit.pcap",
+    "scriptPath": "/zeek_runner/scripts/detect_http_cmd_injection.zeek",
+    "onlyNotice": true,
+    "uuid": "test-detect_http_cmd_injection",
+    "taskID": "22222"
+  }' \
+  http://localhost:8000/api/v1/analyze
+```
+
+## 流量包生成脚本
+
+项目提供了以下流量包生成脚本，用于测试对应的检测脚本：
+
+| 生成脚本 | 用途 | 生成的流量包 |
+|---------|------|-------------|
+| `generate_anomalous_traffic.py` | 生成异常网络流量 | `anomalous_traffic.pcap` |
+| `generate_file_tampering_traffic.py` | 生成文件篡改流量 | `file_tampering.pcap` |
+| `generate_http_brute_force_traffic.py` | 生成HTTP暴力破解流量 | `http_brute_force.pcap` |
+| `generate_file_hijacking_traffic.py` | 生成文件劫持流量 | `file_hijacking.pcap` |
+
+使用方法：
+```shell
+# 进入scripts目录
+cd scripts
+
+# 运行生成脚本
+python generate_anomalous_traffic.py
+python generate_file_tampering_traffic.py
+python generate_http_brute_force_traffic.py
+python generate_file_hijacking_traffic.py
+
+# 生成的pcap文件位于 pcaps 目录
 ```

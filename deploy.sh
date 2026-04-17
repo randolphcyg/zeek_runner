@@ -13,7 +13,7 @@ if [ "$1" = "compose" ]; then
     docker-compose ps
     echo ""
     echo "=== 访问地址 ==="
-    echo "HTTP API (负载均衡): http://localhost:80"
+    echo "HTTP API (负载均衡): http://localhost:18080"
     echo "gRPC (负载均衡): localhost:50050"
     echo "Redis: localhost:6380"
 else
@@ -27,11 +27,10 @@ else
     
     docker run -d \
         --name zeek_runner \
-        -p 8000:8000 \
+        -p 18001:8000 \
         -p 50051:50051 \
         -v $(pwd)/pcaps:/opt/zeek_runner/pcaps \
         -v $(pwd)/scripts:/opt/zeek_runner/scripts \
-        -v $(pwd)/extracted:/opt/zeek_runner/extracted \
         -v $(pwd)/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
         -v $(pwd)/config.yaml:/opt/zeek_runner/config.yaml:ro \
         zeek_runner:latest
@@ -41,7 +40,7 @@ else
     docker ps | grep zeek_runner
     echo ""
     echo "=== 访问地址 ==="
-    echo "HTTP API: http://localhost:8000"
+    echo "HTTP API: http://localhost:18001"
     echo "gRPC: localhost:50051"
 fi
 

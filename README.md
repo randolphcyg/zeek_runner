@@ -20,15 +20,18 @@ https://github.com/randolphcyg/zeek-kafka/
 运行Makefile即可
 
 # 基础镜像
-docker pull golang:1.26-alpine --platform linux/amd64
+docker pull golang:1.26.2-alpine --platform linux/amd64
 docker pull zeek/zeek:8.1.1 --platform linux/amd64
+
+docker pull redis:8-alpine --platform linux/amd64
+docker pull nginx:1.28-alpine --platform linux/amd64
 docker pull jaegertracing/jaeger:2.17.0 --platform linux/amd64
 
-docker build -t zeek_runner:4.0 . --platform linux/amd64
+docker build -t zeek_runner:latest . --platform linux/amd64
 # 指定国内仓库
 docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:latest . --platform linux/amd64
 # 容器导出
-docker save zeek_runner:4.0  | gzip > zeek_runner.tar.gz
+docker save zeek_runner:latest  | gzip > zeek_runner.tar.gz
 docker save redis:8-alpine | gzip > redis.tar.gz
 docker save nginx:1.28-alpine | gzip > nginx.tar.gz
 docker save jaegertracing/jaeger:2.17.0 | gzip > jaeger.tar.gz
@@ -175,14 +178,14 @@ docker-compose logs -f zeek_runner_1
                     ┌─────────────────┐
                     │     Nginx       │
                     │  (负载均衡)      │
-                    │  :80 / :50050   │
+                    │  :18080/:50050  │
                     └────────┬────────┘
                              │
          ┌───────────────────┼───────────────────┐
          ▼                   ▼                   ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │  zeek_runner_1  │ │  zeek_runner_2  │ │  zeek_runner_3  │
-│  :8001 / :50051 │ │  :8002 / :50052 │ │  :8003 / :50053 │
+│  :18001 / :50051 │ │  :18002 / :50052 │ │  :18003 / :50053 │
 └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
          │                   │                   │
          └───────────────────┼───────────────────┘
@@ -198,11 +201,11 @@ docker-compose logs -f zeek_runner_1
 
 | 服务 | 地址 |
 |------|------|
-| HTTP API (负载均衡) | `http://localhost:80` |
+| HTTP API (负载均衡) | `http://localhost:18080` |
 | gRPC (负载均衡) | `localhost:50050` |
-| 实例1 HTTP | `http://localhost:8001` |
-| 实例2 HTTP | `http://localhost:8002` |
-| 实例3 HTTP | `http://localhost:8003` |
+| 实例1 HTTP | `http://localhost:18001` |
+| 实例2 HTTP | `http://localhost:18002` |
+| 实例3 HTTP | `http://localhost:18003` |
 
 #### 环境变量说明
 
@@ -527,7 +530,7 @@ docker run -d \
 # 实例 1
 docker run -d \
   --name zeek_runner_1 \
-  -p 8001:8000 \
+  -p 18001:8000 \
   -p 50051:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
@@ -538,7 +541,7 @@ docker run -d \
 # 实例 2
 docker run -d \
   --name zeek_runner_2 \
-  -p 8002:8000 \
+  -p 18002:8000 \
   -p 50052:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
@@ -549,7 +552,7 @@ docker run -d \
 # 实例 3
 docker run -d \
   --name zeek_runner_3 \
-  -p 8003:8000 \
+  -p 18003:8000 \
   -p 50053:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
@@ -713,10 +716,10 @@ curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:8000/
 **分布式部署**（通过 Nginx 负载均衡，端口 80）：
 ```shell
 # 健康检查
-curl http://localhost:80/api/v1/healthz
+curl http://localhost:18080/api/v1/healthz
 
 # 版本检查
-curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:80/api/v1/version/zeek
+curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:18080/api/v1/version/zeek
 
 # 直接访问实例（调试用）
 curl http://localhost:8001/api/v1/healthz  # 实例1
@@ -885,76 +888,6 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
 }' localhost:50051 zeek_runner.ZeekAnalysisService/ZeekSyntaxCheck
 ```
 
-#### 使用 Go 客户端测试 gRPC
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-    "time"
-
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials/insecure"
-    "google.golang.org/grpc/metadata"
-    pb "zeek_runner/api/pb"
-)
-
-func main() {
-    conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
-    if err != nil {
-        log.Fatalf("did not connect: %v", err)
-    }
-    defer conn.Close()
-
-    client := pb.NewZeekAnalysisServiceClient(conn)
-    
-    // 创建带有认证信息的 context
-    ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-    defer cancel()
-    
-    // 添加认证元数据
-    md := metadata.New(map[string]string{
-        "user-agent":    "go-client",
-        "authorization": "your-token", // 如果配置了 AUTH_TOKENS
-    })
-    ctx = metadata.NewOutgoingContext(ctx, md)
-
-    // 版本检查
-    versionResp, err := client.VersionCheck(ctx, &pb.VersionCheckRequest{Component: "zeek"})
-    if err != nil {
-        log.Fatalf("could not check version: %v", err)
-    }
-    fmt.Printf("Zeek Version: %s\n", versionResp.Version)
-
-    // 语法检查
-    syntaxResp, err := client.ZeekSyntaxCheck(ctx, &pb.ZeekSyntaxCheckRequest{
-        ScriptContent: "event connection_new(c: connection) { print c$id; }",
-    })
-    if err != nil {
-        log.Fatalf("could not check syntax: %v", err)
-    }
-    fmt.Printf("Syntax Valid: %v\n", syntaxResp.Valid)
-
-    // 分析 pcap
-    analyzeResp, err := client.Analyze(ctx, &pb.AnalyzeRequest{
-        TaskID:     "test-001",
-        Uuid:       "test-uuid-001",
-        OnlyNotice: true,
-        PcapID:     "pcap-001",
-        PcapPath:   "/data/zeek_runner/pcaps/sshguess.pcap",
-        ScriptID:   "script-001",
-        ScriptPath: "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
-    })
-    if err != nil {
-        log.Fatalf("could not analyze: %v", err)
-    }
-    fmt.Printf("Analyze Response: %+v\n", analyzeResp)
-}
-```
-
 #### 批量测试脚本
 
 创建批量测试脚本验证负载均衡和分布式处理：
@@ -965,7 +898,7 @@ cat > test_batch.sh << 'EOF'
 #!/bin/bash
 
 TOKEN="token-dpi"
-HTTP_URL="http://localhost:80"
+HTTP_URL="http://localhost:18080"
 GRPC_URL="localhost:50050"
 
 echo "=== 批量测试 HTTP 接口 ==="
