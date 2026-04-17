@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -75,10 +76,10 @@ func (s *GRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest
 		KafkaReady:   s.app.IsKafkaReady(),
 		RedisReady:   redisReady,
 		Timestamp:    time.Now().Format(time.RFC3339),
-		Version:      "1.0.0",
-		GoVersion:    "1.23",
-		Os:           "linux",
-		Arch:         "amd64",
+		Version:      Version,
+		GoVersion:    runtime.Version(),
+		Os:           runtime.GOOS,
+		Arch:         runtime.GOARCH,
 	}, nil
 }
 

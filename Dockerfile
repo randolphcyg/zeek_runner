@@ -6,6 +6,10 @@ ARG GO_VER=1.26.2-alpine
 ARG ZEEK_KAFKA_VER=2.2
 ARG APT_MIRROR
 
+ARG VERSION=dev
+ARG BUILD_TIME
+ARG GIT_COMMIT
+
 # ==========================================
 # Stage 1: Build Zeek Plugin (zeek-kafka)
 # ==========================================
@@ -42,6 +46,10 @@ RUN \
 # Stage 2: Build Go Server
 # ==========================================
 FROM golang:${GO_VER} AS go-builder
+ARG VERSION
+ARG BUILD_TIME
+ARG GIT_COMMIT
+
 WORKDIR /app
 
 ENV GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
@@ -52,7 +60,7 @@ COPY go.mod go.sum ./
 RUN go mod download || go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o zeek_runner .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" -o zeek_runner .
 
 # ==========================================
 # Stage 3: Runtime
