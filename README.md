@@ -59,8 +59,7 @@ chmod +x build_offline.sh
 # ├── docker-compose.yml           # 部署配置
 # ├── nginx.conf                   # 负载均衡配置
 # ├── config.yaml                  # 服务配置示例
-# ├── deploy.sh                    # 部署脚本
-# └── uninstall.sh                 # 卸载脚本
+# └── deploy.sh                    # 部署脚本
 
 # 2.# 2. 传输到目标服务器
 scp -r offline_package user@server:/data/zeek_runner/
@@ -1077,28 +1076,48 @@ zeek -Cr ./pcaps/exploit.pcap \
 
 ## 提取文件模式测试
 EXTRACTED_FILE_PATH=/path/for/save/extracted/files \
-EXTRACTED_FILE_MIN_SIZE=20 \
+MIN_FILE_SIZE_KB=20 \
+MAX_FILE_SIZE_MB=200 \
 zeek -Cr ./file_extract_scripts/xxx.pcap \
 ./extract_http.zeek
 
 EXTRACTED_FILE_PATH=/path/for/save/extracted/files \
-EXTRACTED_FILE_MIN_SIZE=20 \
+MIN_FILE_SIZE_KB=20 \
+MAX_FILE_SIZE_MB=200 \
 zeek -Cr ./xxx.pcap \
 ./extract_http.zeek
 
+# 使用文件提取接口
 curl -X POST \
   -H "Content-Type: application/json" \
+  -H "User-Agent: test" \
+  -H "Authorization: your-token" \
   -d '{
     "extractedFilePath": "/path/for/save/extracted/files",
     "extractedFileMinSize": 20,
+    "extractedFileMaxSize": 200,
     "pcapPath": "/data/zeek_runner/file_extract_scripts/xxx.pcap",
-    "scriptPath": "/data/zeek_runner/file_extract_scripts/extract_http.zeek",
     "uuid": "233",
     "taskID": "122",
-    "pcapID": "pcap-001",
-    "scriptID": "script-001"
+    "pcapID": "pcap-001"
   }' \
-  http://localhost:8000/api/v1/analyze
+  http://localhost:8000/api/v1/extract
+
+# 使用异步文件提取接口
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: test" \
+  -H "Authorization: your-token" \
+  -d '{
+    "extractedFilePath": "/path/for/save/extracted/files",
+    "extractedFileMinSize": 20,
+    "extractedFileMaxSize": 200,
+    "pcapPath": "/data/zeek_runner/file_extract_scripts/xxx.pcap",
+    "uuid": "233",
+    "taskID": "122",
+    "pcapID": "pcap-001"
+  }' \
+  http://localhost:8000/api/v1/extract/async
 ```
 
 ### docker-compose部署

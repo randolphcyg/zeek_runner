@@ -76,6 +76,8 @@ func main() {
 	{
 		auth.POST("/analyze", httpHandler.HandleAnalysis)
 		auth.POST("/analyze/async", httpHandler.HandleAsyncAnalysis)
+		auth.POST("/extract", httpHandler.HandleExtract)
+		auth.POST("/extract/async", httpHandler.HandleExtractAsync)
 		auth.GET("/task/:taskID", httpHandler.HandleTaskStatus)
 		auth.GET("/version/zeek", httpHandler.CmdHandler("zeek", "--version"))
 		auth.GET("/version/zeek-kafka", httpHandler.CmdHandler("zeek", "-N", "Seiso::Kafka"))

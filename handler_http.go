@@ -29,16 +29,37 @@ func (h *HTTPHandler) HandleAnalysis(c *gin.Context) {
 		return
 	}
 
-	if req.ExtractedFilePath != "" && req.ScriptID == "" {
-		req.ScriptID = "EXTRACT_TASK"
-	}
-
 	if err := validateReq(req); err != nil {
 		response(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
 	resp, err := h.service.ExecuteTaskInPool(c.Request.Context(), req)
+	if err != nil {
+		code := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "pool full") {
+			code = http.StatusServiceUnavailable
+		}
+		response(c, code, err.Error(), err)
+		return
+	}
+	success(c, resp)
+}
+
+// HandleExtract 处理文件提取请求
+func (h *HTTPHandler) HandleExtract(c *gin.Context) {
+	var req ExtractReq
+	if err := c.BindJSON(&req); err != nil {
+		response(c, http.StatusBadRequest, "invalid params", err)
+		return
+	}
+
+	if err := validateExtractReq(req); err != nil {
+		response(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	resp, err := h.service.ExecuteExtractTask(c.Request.Context(), req)
 	if err != nil {
 		code := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "pool full") {
@@ -57,16 +78,46 @@ func (h *HTTPHandler) HandleAsyncAnalysis(c *gin.Context) {
 		return
 	}
 
-	if req.ExtractedFilePath != "" && req.ScriptID == "" {
-		req.ScriptID = "EXTRACT_TASK"
-	}
-
 	if err := validateReq(req); err != nil {
 		response(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
 	task, err := h.service.SubmitAsyncTask(c.Request.Context(), req)
+	if err != nil {
+		code := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "pool full") {
+			code = http.StatusServiceUnavailable
+		}
+		if strings.Contains(err.Error(), "Redis required") {
+			code = http.StatusServiceUnavailable
+		}
+		response(c, code, err.Error(), err)
+		return
+	}
+
+	success(c, gin.H{
+		"taskID":     task.TaskID,
+		"uuid":       task.UUID,
+		"status":     task.Status,
+		"createTime": task.CreateTime.Format(time.RFC3339),
+	})
+}
+
+// HandleExtractAsync 处理异步文件提取请求
+func (h *HTTPHandler) HandleExtractAsync(c *gin.Context) {
+	var req ExtractReq
+	if err := c.BindJSON(&req); err != nil {
+		response(c, http.StatusBadRequest, "invalid params", err)
+		return
+	}
+
+	if err := validateExtractReq(req); err != nil {
+		response(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	task, err := h.service.SubmitExtractAsyncTask(c.Request.Context(), req)
 	if err != nil {
 		code := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "pool full") {

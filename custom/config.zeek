@@ -7,7 +7,9 @@ redef Kafka::topic_name = "zeek_logs";
 redef Kafka::kafka_conf += {
     ["metadata.broker.list"] = getenv("KAFKA_BROKERS"),
     ["compression.codec"] = "snappy",
-    ["batch.num.messages"] = "10000"
+    ["batch.num.messages"] = "1000",
+    ["queue.buffering.max.ms"] = "1",
+    ["queue.buffering.max.messages"] = "500000",
 };
 redef Kafka::json_timestamps = JSON::TS_ISO8601;
 
@@ -19,6 +21,9 @@ global pcapID = getenv("PCAP_ID");
 global pcapPath = getenv("PCAP_PATH");
 global scriptID = getenv("SCRIPT_ID");
 global scriptPath = getenv("SCRIPT_PATH");
+
+# 从环境变量读取Kafka等待时间，默认10秒
+redef Kafka::max_wait_on_shutdown = to_count(getenv("KAFKA_MAX_WAIT_ON_SHUTDOWN") != "" ? getenv("KAFKA_MAX_WAIT_ON_SHUTDOWN") : "10000");
 
 redef Kafka::key_name = pcapPath;
 
@@ -102,6 +107,7 @@ event zeek_init() &priority=-10 {
     if (scriptID != "") { Kafka::headers["scriptID"] = scriptID; }
     if (scriptPath != "") { Kafka::headers["scriptPath"] = scriptPath; }
     if (onlyNotice == "true") { Kafka::headers["onlyNotice"] = onlyNotice; }
+    if (getenv("EXTRACTED_FILE_PATH") != "") { Kafka::headers["extractedFilePath"] = getenv("EXTRACTED_FILE_PATH"); }
 
     # B. 创建 TaskStatus 流
     Log::create_stream(TaskStatus::LOG, [$columns=TaskStatus::Info, $path="task_status"]);

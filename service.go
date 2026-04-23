@@ -56,6 +56,26 @@ type AnalyzeResp struct {
 	StartTime  string `json:"startTime"`
 }
 
+type ExtractReq struct {
+	TaskID               string `json:"taskID"`
+	UUID                 string `json:"uuid"`
+	PcapID               string `json:"pcapID"`
+	PcapPath             string `json:"pcapPath"`
+	ScriptPath           string `json:"scriptPath"`
+	ExtractedFilePath    string `json:"extractedFilePath"`
+	ExtractedFileMinSize int    `json:"extractedFileMinSize"`
+	ExtractedFileMaxSize int    `json:"extractedFileMaxSize"`
+}
+
+type ExtractResp struct {
+	TaskID            string `json:"taskID"`
+	UUID              string `json:"uuid"`
+	PcapPath          string `json:"pcapPath"`
+	ScriptPath        string `json:"scriptPath"`
+	ExtractedFilePath string `json:"extractedFilePath"`
+	StartTime         string `json:"startTime"`
+}
+
 type Service struct {
 	pool          *ants.Pool
 	configManager *ConfigManager
@@ -132,6 +152,281 @@ func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*Analy
 		RecordTask("canceled", time.Since(enqueueTime).Seconds())
 		return nil, ctx.Err()
 	}
+}
+
+func (s *Service) ExecuteExtractTask(ctx context.Context, req ExtractReq) (*ExtractResp, error) {
+	type result struct {
+		output    []byte
+		err       error
+		startTime time.Time
+	}
+	resultChan := make(chan result, 1)
+	enqueueTime := time.Now()
+
+	cfg := s.getConfig()
+	err := s.pool.Submit(func() {
+		if ctx.Err() != nil {
+			return
+		}
+
+		actualStartTime := time.Now()
+		queueDuration := actualStartTime.Sub(enqueueTime)
+		if queueDuration > 500*time.Millisecond {
+			LogTaskEvent("queue_wait", req.TaskID, req.UUID,
+				"wait_ms", queueDuration.Milliseconds(),
+				"pool_running", s.pool.Running(),
+			)
+		}
+
+		out, e := s.runExtractAnalysis(ctx, req)
+		select {
+		case resultChan <- result{
+			output:    out,
+			err:       e,
+			startTime: actualStartTime,
+		}:
+		case <-ctx.Done():
+		}
+	})
+
+	if err != nil {
+		if errors.Is(err, ants.ErrPoolOverload) {
+			RecordTask("rejected", 0)
+			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.Pool.Size)
+		}
+		RecordTask("error", 0)
+		return nil, status.Errorf(codes.Internal, "submit failed: %v", err)
+	}
+
+	select {
+	case res := <-resultChan:
+		duration := time.Since(enqueueTime).Seconds()
+		if res.err != nil {
+			RecordTask("failed", duration)
+			return nil, fmt.Errorf("%w | output: %s", res.err, string(res.output))
+		}
+		RecordTask("success", duration)
+		return &ExtractResp{
+			TaskID: req.TaskID, UUID: req.UUID,
+			PcapPath: req.PcapPath, ExtractedFilePath: req.ExtractedFilePath,
+			StartTime: res.startTime.Format(time.RFC3339),
+		}, nil
+	case <-ctx.Done():
+		RecordTask("canceled", time.Since(enqueueTime).Seconds())
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Service) SubmitExtractAsyncTask(ctx context.Context, req ExtractReq) (*Task, error) {
+	if s.taskManager == nil {
+		return nil, errors.New("task manager not initialized, Redis required")
+	}
+
+	task, err := s.taskManager.CreateExtractTask(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task: %w", err)
+	}
+
+	if err := s.taskManager.EnqueueTask(ctx, task.UUID); err != nil {
+		s.taskManager.SetFailed(ctx, task.UUID, "failed to enqueue")
+		return nil, fmt.Errorf("failed to enqueue task: %w", err)
+	}
+
+	LogTaskEvent("submitted", task.TaskID, task.UUID,
+		"status", "queued",
+	)
+
+	RecordTask("queued", 0)
+	return task, nil
+}
+
+func (s *Service) runExtractAnalysis(parentCtx context.Context, req ExtractReq) ([]byte, error) {
+	cfg := s.getConfig()
+	taskType := "FILE_EXTRACT"
+	pcapName := filepath.Base(req.PcapPath)
+
+	// 优先使用请求中的脚本路径，否则使用默认路径
+	var scriptPath string
+	if req.ScriptPath != "" {
+		scriptPath = req.ScriptPath
+	} else {
+		// 使用默认的文件提取脚本路径
+		scriptPath = "/opt/zeek_runner/file_extract_scripts/extract_file.zeek"
+	}
+
+	// 确保路径格式正确
+	scriptPath = strings.Replace(scriptPath, "\\", "/", -1)
+	scriptName := filepath.Base(scriptPath)
+
+	LogTaskEvent("zeek_start", req.TaskID, req.UUID,
+		"type", taskType,
+		"pcap", pcapName,
+		"script", scriptName,
+		"timeout_min", cfg.Pool.TimeoutMinutes,
+	)
+
+	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", req.UUID))
+	if err != nil {
+		LogTaskError("temp_dir_failed", req.TaskID, req.UUID, err)
+		return nil, status.Errorf(codes.Internal, "create temp dir failed: %v", err)
+	}
+	defer os.RemoveAll(workDir)
+
+	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(cfg.Pool.TimeoutMinutes)*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, scriptPath)
+	cmd.Dir = workDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+
+	env := os.Environ()
+	envMap := map[string]string{
+		"TASK_ID":             req.TaskID,
+		"UUID":                req.UUID,
+		"PCAP_ID":             req.PcapID,
+		"PCAP_PATH":           req.PcapPath,
+		"EXTRACTED_FILE_PATH": req.ExtractedFilePath,
+		"MIN_FILE_SIZE_KB":    strconv.Itoa(req.ExtractedFileMinSize),
+		"MAX_FILE_SIZE_MB":    strconv.Itoa(req.ExtractedFileMaxSize),
+		"KAFKA_BROKERS":       cfg.Kafka.Brokers,
+	}
+	for k, v := range envMap {
+		if v != "" {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+	cmd.Env = env
+
+	var errBuf bytes.Buffer
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &LimitWriter{w: &errBuf, n: 8192}
+
+	startTime := time.Now()
+	err = cmd.Run()
+	output := errBuf.Bytes()
+	duration := time.Since(startTime)
+
+	if err != nil {
+		errMsg := "zeek_failed"
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			errMsg = "timeout"
+		} else if errors.Is(ctx.Err(), context.Canceled) {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			errMsg = "canceled"
+		}
+
+		LogTaskError(errMsg, req.TaskID, req.UUID, err,
+			"duration_ms", duration.Milliseconds(),
+			"stderr", string(output),
+		)
+		return output, err
+	}
+
+	LogTaskEvent("zeek_done", req.TaskID, req.UUID,
+		"duration_ms", duration.Milliseconds(),
+		"stderr", string(output),
+		"type", taskType,
+	)
+
+	if s.fileDedupMgr != nil && req.ExtractedFilePath != "" {
+		s.processExtractedFiles(ctx, req.ExtractedFilePath, req.PcapPath, req.TaskID)
+	}
+
+	return output, nil
+}
+
+func (s *Service) processExtractedFiles(ctx context.Context, extractDir string, pcapPath string, taskID string) {
+	entries, err := os.ReadDir(extractDir)
+	if err != nil {
+		LogTaskError("read_dir_failed", taskID, "", err, "dir", extractDir)
+		return
+	}
+
+	pcapBase := filepath.Base(pcapPath)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		filename := entry.Name()
+
+		if filename == pcapBase {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(filename))
+		if ext == ".pcap" || ext == ".cap" || ext == ".pcapng" {
+			continue
+		}
+
+		filePath := filepath.Join(extractDir, entry.Name())
+		record, isDuplicate, err := s.fileDedupMgr.ProcessExtractedFile(ctx, filePath, pcapPath, taskID)
+		if err != nil {
+			LogTaskError("process_file_failed", taskID, "", err, "file", entry.Name())
+			continue
+		}
+
+		if isDuplicate {
+			LogTaskEvent("file_dedup", taskID, "",
+				"file", entry.Name(),
+				"hash", record.Hash[:16],
+				"action", "skipped",
+				"ref_count", record.RefCount,
+			)
+		} else {
+			LogTaskEvent("file_saved", taskID, "",
+				"file", entry.Name(),
+				"hash", record.Hash[:16],
+				"size", record.FileSize,
+			)
+		}
+	}
+}
+
+func validateExtractReq(req ExtractReq) error {
+	if req.TaskID == "" || req.UUID == "" {
+		return errors.New("missing taskID or uuid")
+	}
+	if req.PcapID == "" {
+		return errors.New("missing pcapID")
+	}
+	if req.PcapPath == "" {
+		return errors.New("missing pcapPath")
+	}
+	if req.ExtractedFilePath == "" {
+		return errors.New("missing extractedFilePath")
+	}
+
+	if err := validatePath(req.PcapPath, "pcap"); err != nil {
+		return err
+	}
+	if !isFileExist(req.PcapPath) {
+		return fmt.Errorf("file not found: %s", req.PcapPath)
+	}
+
+	if err := validatePath(req.ExtractedFilePath, "extracted file"); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(req.ExtractedFilePath) {
+		return errors.New("extracted file path must be absolute")
+	}
+
+	// 验证脚本路径（如果提供）
+	if req.ScriptPath != "" {
+		if err := validatePath(req.ScriptPath, "script"); err != nil {
+			return err
+		}
+		if !isFileExist(req.ScriptPath) {
+			return fmt.Errorf("script file not found: %s", req.ScriptPath)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, error) {
@@ -404,7 +699,7 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 	)
 
 	if taskType == "FILE_EXTRACT" && s.fileDedupMgr != nil && req.ExtractedFilePath != "" {
-		s.processExtractedFiles(ctx, req)
+		s.processExtractedFiles(ctx, req.ExtractedFilePath, req.PcapPath, req.TaskID)
 	}
 
 	return output, nil
@@ -415,55 +710,6 @@ func deriveTaskType(req AnalyzeReq) string {
 		return "FILE_EXTRACT"
 	}
 	return "MALICIOUS_SCAN"
-}
-
-func (s *Service) processExtractedFiles(ctx context.Context, req AnalyzeReq) {
-	extractDir := req.ExtractedFilePath
-	entries, err := os.ReadDir(extractDir)
-	if err != nil {
-		LogTaskError("read_dir_failed", req.TaskID, req.UUID, err, "dir", extractDir)
-		return
-	}
-
-	pcapBase := filepath.Base(req.PcapPath)
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		filename := entry.Name()
-
-		if filename == pcapBase {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(filename))
-		if ext == ".pcap" || ext == ".cap" || ext == ".pcapng" {
-			continue
-		}
-
-		filePath := filepath.Join(extractDir, entry.Name())
-		record, isDuplicate, err := s.fileDedupMgr.ProcessExtractedFile(ctx, filePath, req.PcapPath, req.TaskID)
-		if err != nil {
-			LogTaskError("process_file_failed", req.TaskID, req.UUID, err, "file", entry.Name())
-			continue
-		}
-
-		if isDuplicate {
-			LogTaskEvent("file_dedup", req.TaskID, req.UUID,
-				"file", entry.Name(),
-				"hash", record.Hash[:16],
-				"action", "skipped",
-				"ref_count", record.RefCount,
-			)
-		} else {
-			LogTaskEvent("file_saved", req.TaskID, req.UUID,
-				"file", entry.Name(),
-				"hash", record.Hash[:16],
-				"size", record.FileSize,
-			)
-		}
-	}
 }
 
 func validateReq(req AnalyzeReq) error {
@@ -511,7 +757,8 @@ func validatePath(path, name string) error {
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("invalid %s path: path traversal detected", name)
 	}
-	if !filepath.IsAbs(cleanPath) {
+	isAbs := filepath.IsAbs(cleanPath)
+	if !isAbs && !strings.HasPrefix(cleanPath, "/") {
 		return fmt.Errorf("%s path must be absolute", name)
 	}
 	return nil

@@ -16,6 +16,16 @@ kafka:
   brokers: "192.168.x.xx:9092"
   topic: "zeek_logs"
 
+otel:
+  enabled: false
+  endpoint: "192.168.x.xx:14317"
+
+zeek:
+  baseWaitTimeMs: 10000                      # zeek等待Kafka消息的最大时间，单位毫秒
+  extractPath: "/opt/zeek_runner/extracted"  # 文件提取保存路径
+  minSizeKB: 20                              # 最小提取文件大小 (KB)
+  maxSizeMB: 200                             # 最大提取文件大小 (MB)
+  
 pool:
   size: 8
   maxBlocking: 10000
@@ -42,11 +52,3 @@ grpc:
   enableHealthCheck: true
   authTokens:
     - "your-token-here"
-
-file:
-  extractPath: "/opt/zeek_runner/extracted"
-  minSizeKB: 20
-
-otel:
-  enabled: false
-  endpoint: "192.168.x.xx:14317"

@@ -7,8 +7,12 @@ GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # 获取当前时间
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# 版本号（使用 Git 提交哈希作为版本）
-VERSION="5.0"
+# 默认版本号
+DEFAULT_VERSION="5.0"
+
+# 读取版本号
+read -p "请输入版本号 (默认: $DEFAULT_VERSION): " VERSION
+VERSION=${VERSION:-$DEFAULT_VERSION}
 
 echo "========================================"
 echo "  Zeek Runner 构建脚本"
