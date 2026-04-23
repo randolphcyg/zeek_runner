@@ -7,6 +7,7 @@ x-zeek-runner-common: &zeek-runner-common
   volumes: &zeek-runner-volumes
     - ./pcaps:/opt/zeek_runner/pcaps
     - ./scripts:/opt/zeek_runner/scripts
+    - ./file_extract_scripts:/opt/zeek_runner/file_extract_scripts
     - ./extracted:/opt/zeek_runner/extracted
     - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
     - ./config.yaml:/opt/zeek_runner/config.yaml:ro

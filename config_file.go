@@ -153,11 +153,14 @@ func MergeConfigWithEnv(fileCfg *Config, envCfg *Config) *Config {
 		result.OTel.Endpoint = fileCfg.OTel.Endpoint
 	}
 
-	if fileCfg.File.ExtractPath != "" {
-		result.File.ExtractPath = fileCfg.File.ExtractPath
+	if fileCfg.Zeek.BaseWaitTimeMs > 0 && os.Getenv("ZEEK_BASE_WAIT_TIME_MS") == "" {
+		result.Zeek.BaseWaitTimeMs = fileCfg.Zeek.BaseWaitTimeMs
 	}
-	if fileCfg.File.MinSizeKB > 0 {
-		result.File.MinSizeKB = fileCfg.File.MinSizeKB
+	if fileCfg.Zeek.ExtractPath != "" && os.Getenv("ZEEK_EXTRACT_PATH") == "" {
+		result.Zeek.ExtractPath = fileCfg.Zeek.ExtractPath
+	}
+	if fileCfg.Zeek.MinSizeKB > 0 && os.Getenv("ZEEK_MIN_SIZE_KB") == "" {
+		result.Zeek.MinSizeKB = fileCfg.Zeek.MinSizeKB
 	}
 
 	return &result

@@ -68,9 +68,11 @@ type OTelConfig struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
-type FileConfig struct {
-	ExtractPath string `yaml:"extractPath"`
-	MinSizeKB   int    `yaml:"minSizeKB"`
+type ZeekConfig struct {
+	BaseWaitTimeMs int    `yaml:"baseWaitTimeMs"`
+	ExtractPath    string `yaml:"extractPath"`
+	MinSizeKB      int    `yaml:"minSizeKB"`
+	MaxSizeMB      int    `yaml:"maxSizeMB"`
 }
 
 type Config struct {
@@ -80,7 +82,7 @@ type Config struct {
 	RateLimit RateLimitConfig `yaml:"rateLimit"`
 	HTTP      HTTPConfig      `yaml:"http"`
 	GRPC      GRPCConfig      `yaml:"grpc"`
-	File      FileConfig      `yaml:"file"`
+	Zeek      ZeekConfig      `yaml:"zeek"`
 	OTel      OTelConfig      `yaml:"otel"`
 }
 
@@ -180,6 +182,12 @@ func loadConfig() *Config {
 		OTel: OTelConfig{
 			Enabled:  getEnvBool("OTEL_ENABLED", false),
 			Endpoint: getEnvString("OTEL_ENDPOINT", ""),
+		},
+		Zeek: ZeekConfig{
+			BaseWaitTimeMs: getEnvInt("ZEEK_BASE_WAIT_TIME_MS", 10000),
+			ExtractPath:    getEnvString("ZEEK_EXTRACT_PATH", "/opt/zeek_runner/extracted"),
+			MinSizeKB:      getEnvInt("ZEEK_MIN_SIZE_KB", 20),
+			MaxSizeMB:      getEnvInt("ZEEK_MAX_SIZE_MB", 200),
 		},
 	}
 

@@ -28,11 +28,6 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 		TaskID: req.TaskID, UUID: req.Uuid, OnlyNotice: req.OnlyNotice,
 		PcapID: req.PcapID, PcapPath: req.PcapPath,
 		ScriptID: req.ScriptID, ScriptPath: req.ScriptPath,
-		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
-	}
-
-	if ar.ExtractedFilePath != "" && ar.ScriptID == "" {
-		ar.ScriptID = "EXTRACT_TASK"
 	}
 
 	if err := validateReq(ar); err != nil {
@@ -50,6 +45,33 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 	return &pb.AnalyzeResponse{
 		TaskID: resp.TaskID, Uuid: resp.UUID,
 		PcapPath: resp.PcapPath, ScriptPath: resp.ScriptPath, StartTime: resp.StartTime,
+	}, nil
+}
+
+// Extract 处理同步文件提取请求
+func (s *GRPCServer) Extract(ctx context.Context, req *pb.ExtractRequest) (*pb.ExtractResponse, error) {
+	er := ExtractReq{
+		TaskID: req.TaskID, UUID: req.Uuid,
+		PcapID: req.PcapID, PcapPath: req.PcapPath, ScriptPath: req.ScriptPath,
+		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
+		ExtractedFileMaxSize: int(req.ExtractedFileMaxSize),
+	}
+
+	if err := validateExtractReq(er); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	resp, err := s.service.ExecuteExtractTask(ctx, er)
+	if err != nil {
+		if strings.Contains(err.Error(), "pool full") {
+			return nil, status.Error(codes.ResourceExhausted, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &pb.ExtractResponse{
+		TaskID: resp.TaskID, Uuid: resp.UUID,
+		PcapPath: resp.PcapPath, ExtractedFilePath: resp.ExtractedFilePath, StartTime: resp.StartTime,
 	}, nil
 }
 
@@ -129,11 +151,6 @@ func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeReque
 		TaskID: req.TaskID, UUID: req.Uuid, OnlyNotice: req.OnlyNotice,
 		PcapID: req.PcapID, PcapPath: req.PcapPath,
 		ScriptID: req.ScriptID, ScriptPath: req.ScriptPath,
-		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
-	}
-
-	if ar.ExtractedFilePath != "" && ar.ScriptID == "" {
-		ar.ScriptID = "EXTRACT_TASK"
 	}
 
 	if err := validateReq(ar); err != nil {
@@ -152,6 +169,38 @@ func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeReque
 	}
 
 	return &pb.AsyncAnalyzeResponse{
+		TaskID:     task.TaskID,
+		Uuid:       task.UUID,
+		Status:     string(task.Status),
+		CreateTime: task.CreateTime.Format(time.RFC3339),
+	}, nil
+}
+
+// ExtractAsync 处理异步文件提取请求
+func (s *GRPCServer) ExtractAsync(ctx context.Context, req *pb.ExtractAsyncRequest) (*pb.ExtractAsyncResponse, error) {
+	er := ExtractReq{
+		TaskID: req.TaskID, UUID: req.Uuid,
+		PcapID: req.PcapID, PcapPath: req.PcapPath, ScriptPath: req.ScriptPath,
+		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
+		ExtractedFileMaxSize: int(req.ExtractedFileMaxSize),
+	}
+
+	if err := validateExtractReq(er); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	task, err := s.service.SubmitExtractAsyncTask(ctx, er)
+	if err != nil {
+		if strings.Contains(err.Error(), "pool full") {
+			return nil, status.Error(codes.ResourceExhausted, err.Error())
+		}
+		if strings.Contains(err.Error(), "Redis required") {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &pb.ExtractAsyncResponse{
 		TaskID:     task.TaskID,
 		Uuid:       task.UUID,
 		Status:     string(task.Status),

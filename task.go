@@ -32,6 +32,7 @@ type Task struct {
 	OnlyNotice           bool       `json:"onlyNotice"`
 	ExtractedFilePath    string     `json:"extractedFilePath"`
 	ExtractedFileMinSize int        `json:"extractedFileMinSize"`
+	ExtractedFileMaxSize int        `json:"extractedFileMaxSize"`
 	Status               TaskStatus `json:"status"`
 	CreateTime           time.Time  `json:"createTime"`
 	StartTime            time.Time  `json:"startTime"`
@@ -149,8 +150,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, e
 		ScriptID:             req.ScriptID,
 		ScriptPath:           req.ScriptPath,
 		OnlyNotice:           req.OnlyNotice,
-		ExtractedFilePath:    req.ExtractedFilePath,
-		ExtractedFileMinSize: req.ExtractedFileMinSize,
+		ExtractedFilePath:    "",
+		ExtractedFileMinSize: 0,
+		ExtractedFileMaxSize: 0,
 		Status:               TaskStatusPending,
 		CreateTime:           time.Now(),
 		MaxRetries:           3,
@@ -163,6 +165,34 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, e
 	tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusPending, "")
 
 	slog.Info("task created", "taskID", task.TaskID, "uuid", task.UUID)
+	return task, nil
+}
+
+// CreateExtractTask 创建文件提取任务
+func (tm *TaskManager) CreateExtractTask(ctx context.Context, req ExtractReq) (*Task, error) {
+	task := &Task{
+		TaskID:               req.TaskID,
+		UUID:                 req.UUID,
+		PcapID:               req.PcapID,
+		PcapPath:             req.PcapPath,
+		ScriptID:             "EXTRACT_TASK",
+		ScriptPath:           req.ScriptPath,
+		OnlyNotice:           false,
+		ExtractedFilePath:    req.ExtractedFilePath,
+		ExtractedFileMinSize: req.ExtractedFileMinSize,
+		ExtractedFileMaxSize: req.ExtractedFileMaxSize,
+		Status:               TaskStatusPending,
+		CreateTime:           time.Now(),
+		MaxRetries:           3,
+	}
+
+	if err := tm.saveTask(ctx, task); err != nil {
+		return nil, err
+	}
+
+	tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusPending, "")
+
+	slog.Info("extract task created", "taskID", task.TaskID, "uuid", task.UUID)
 	return task, nil
 }
 

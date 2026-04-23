@@ -1,6 +1,5 @@
 syntax = "proto3";
 package zeek_runner;
-
 option go_package = "zeek_runner/api/pb";
 
 // 请求体
@@ -12,8 +11,6 @@ message AnalyzeRequest {
   string pcapPath = 5;         // pcap文件路径
   string scriptID = 6;         // 脚本ID
   string scriptPath = 7;       // 脚本路径
-  string extractedFilePath = 8;// 提取文件存储路径
-  int32 extractedFileMinSize = 9;// 提取文件最小大小(KB)
 }
 
 // 响应体
@@ -23,6 +20,28 @@ message AnalyzeResponse {
   string pcapPath = 3;         // pcap文件路径
   string scriptPath = 4;       // 脚本路径
   string startTime = 5;        // 任务开始时间
+}
+
+// 文件提取请求
+message ExtractRequest {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  string pcapID = 3;           // pcap文件ID
+  string pcapPath = 4;         // pcap文件路径
+  string scriptPath = 5;       // 脚本路径（可选，绝对路径）
+  string extractedFilePath = 6;// 提取文件存储路径
+  int32 extractedFileMinSize = 7;// 提取文件最小大小(KB)
+  int32 extractedFileMaxSize = 8;// 提取文件最大大小(MB)
+}
+
+// 文件提取响应
+message ExtractResponse {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  string pcapPath = 3;         // pcap文件路径
+  string scriptPath = 4;       // 脚本路径
+  string extractedFilePath = 5;// 提取文件存储路径
+  string startTime = 6;        // 任务开始时间
 }
 
 // 健康检查请求
@@ -74,12 +93,30 @@ message AsyncAnalyzeRequest {
   string pcapPath = 5;         // pcap文件路径
   string scriptID = 6;         // 脚本ID
   string scriptPath = 7;       // 脚本路径
-  string extractedFilePath = 8;// 提取文件存储路径
-  int32 extractedFileMinSize = 9;// 提取文件最小大小(KB)
 }
 
 // 异步分析响应
 message AsyncAnalyzeResponse {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  string status = 3;           // 任务状态
+  string createTime = 4;       // 创建时间
+}
+
+// 异步文件提取请求
+message ExtractAsyncRequest {
+  string taskID = 1;           // 任务ID
+  string uuid = 2;             // UUID
+  string pcapID = 3;           // pcap文件ID
+  string pcapPath = 4;         // pcap文件路径
+  string scriptPath = 5;       // 脚本路径（可选，绝对路径）
+  string extractedFilePath = 6;// 提取文件存储路径
+  int32 extractedFileMinSize = 7;// 提取文件最小大小(KB)
+  int32 extractedFileMaxSize = 8;// 提取文件最大大小(MB)
+}
+
+// 异步文件提取响应
+message ExtractAsyncResponse {
   string taskID = 1;           // 任务ID
   string uuid = 2;             // UUID
   string status = 3;           // 任务状态
@@ -141,6 +178,8 @@ message ParentTaskStatusResponse {
 service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
   rpc AsyncAnalyze(AsyncAnalyzeRequest) returns (AsyncAnalyzeResponse) {}
+  rpc Extract(ExtractRequest) returns (ExtractResponse) {}
+  rpc ExtractAsync(ExtractAsyncRequest) returns (ExtractAsyncResponse) {}
   rpc GetTaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
   rpc GetParentTaskStatus(ParentTaskStatusRequest) returns (ParentTaskStatusResponse) {}
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}

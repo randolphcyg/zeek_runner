@@ -140,23 +140,42 @@ func TestValidatePath_Relative(t *testing.T) {
 	}
 }
 
-func TestDeriveTaskType_MaliciousScan(t *testing.T) {
-	req := AnalyzeReq{
-		ScriptPath: "/tmp/detect_ssh.zeek",
-	}
-	taskType := deriveTaskType(req)
-	if taskType != "MALICIOUS_SCAN" {
-		t.Errorf("expected MALICIOUS_SCAN, got %s", taskType)
+func TestHTTPHandler_HandleExtract_InvalidParams(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHTTPHandler(nil, nil)
+
+	router := gin.New()
+	router.POST("/extract", handler.HandleExtract)
+
+	jsonBody, _ := json.Marshal(map[string]string{})
+	req, _ := http.NewRequest(http.MethodPost, "/extract", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 }
 
-func TestDeriveTaskType_FileExtract(t *testing.T) {
-	req := AnalyzeReq{
-		ScriptPath:        "/tmp/extract_http.zeek",
-		ExtractedFilePath: "/tmp/extracted",
-	}
-	taskType := deriveTaskType(req)
-	if taskType != "FILE_EXTRACT" {
-		t.Errorf("expected FILE_EXTRACT, got %s", taskType)
+func TestHTTPHandler_HandleExtractAsync_InvalidParams(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHTTPHandler(nil, nil)
+
+	router := gin.New()
+	router.POST("/extract/async", handler.HandleExtractAsync)
+
+	jsonBody, _ := json.Marshal(map[string]string{})
+	req, _ := http.NewRequest(http.MethodPost, "/extract/async", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 }
