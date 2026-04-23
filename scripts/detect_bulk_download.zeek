@@ -103,7 +103,7 @@ event file_state_remove(f: fa_file)
     if ( f$info?$mime_type && |watch_mime_types| > 0 && f$info$mime_type !in watch_mime_types )
         return;
 
-    # 【修复点】: 在 Zeek 8.1.1 中，通过遍历传输该文件的所有网络连接来提取下载者 IP
+    # 在 Zeek 8.x 中，通过遍历传输该文件的所有网络连接来提取下载者 IP
     local downloaders: set[addr];
 
     # f$conns 是一个记录了所有传输该文件的连接表 (table[conn_id] of connection)
