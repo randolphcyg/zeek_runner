@@ -627,30 +627,6 @@ zeek:file:path:{filePath} → hash
 | 历史文件清理 | 影响其他任务 | 互不影响 ✅ |
 | 实验可重复性 | 可能被覆盖 | 完全隔离 ✅ |
 
-#### 日志示例
-
-```json
-// 新文件注册
-{
-  "time": "2026-04-10T14:56:59.041Z",
-  "level": "INFO",
-  "msg": "file registered in task",
-  "hash": "d1c925edf5352cf1",
-  "path": "/data/zeek/extracted/task-001/geektime-rust-master.zip",
-  "taskID": "7f44ea95e57b9bb8416b55a93d01b315"
-}
-
-// 任务内重复文件
-{
-  "time": "2026-04-10T14:56:59.041Z",
-  "level": "INFO",
-  "msg": "duplicate file in task detected",
-  "hash": "26ed3bde1930d8c5",
-  "newPath": "/data/zeek/extracted/task-001/extract-1712541417.830875-SSL-FAjUIj3Y8rG4VuqAqc",
-  "existingPath": "/data/zeek/extracted/task-001/extract-1712541417.830875-SSL-Fp2coG1XPb9TSjio1g",
-  "taskID": "7f44ea95e57b9bb8416b55a93d01b315"
-}
-```
 
 #### 前置服务消费 Kafka
 
