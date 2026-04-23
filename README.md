@@ -1054,7 +1054,7 @@ zeek -Cr ./pcaps/exploit.pcap \
 EXTRACTED_FILE_PATH=/path/for/save/extracted/files \
 MIN_FILE_SIZE_KB=20 \
 MAX_FILE_SIZE_MB=200 \
-zeek -Cr ./file_extract_scripts/xxx.pcap \
+zeek -Cr ./file_extract_script/xxx.pcap \
 ./extract_http.zeek
 
 EXTRACTED_FILE_PATH=/path/for/save/extracted/files \
@@ -1072,7 +1072,7 @@ curl -X POST \
     "extractedFilePath": "/path/for/save/extracted/files",
     "extractedFileMinSize": 20,
     "extractedFileMaxSize": 200,
-    "pcapPath": "/data/zeek_runner/file_extract_scripts/xxx.pcap",
+    "pcapPath": "/data/zeek_runner/file_extract_script/xxx.pcap",
     "uuid": "233",
     "taskID": "122",
     "pcapID": "pcap-001"
@@ -1088,7 +1088,7 @@ curl -X POST \
     "extractedFilePath": "/path/for/save/extracted/files",
     "extractedFileMinSize": 20,
     "extractedFileMaxSize": 200,
-    "pcapPath": "/data/zeek_runner/file_extract_scripts/xxx.pcap",
+    "pcapPath": "/data/zeek_runner/file_extract_script/xxx.pcap",
     "uuid": "233",
     "taskID": "122",
     "pcapID": "pcap-001"

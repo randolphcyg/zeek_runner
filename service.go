@@ -251,7 +251,7 @@ func (s *Service) runExtractAnalysis(parentCtx context.Context, req ExtractReq) 
 		scriptPath = req.ScriptPath
 	} else {
 		// 使用默认的文件提取脚本路径
-		scriptPath = "/opt/zeek_runner/file_extract_scripts/extract_file.zeek"
+		scriptPath = "/opt/zeek_runner/file_extract_script/extract_file.zeek"
 	}
 
 	// 确保路径格式正确
