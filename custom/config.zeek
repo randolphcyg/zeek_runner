@@ -112,7 +112,7 @@ event zeek_init() &priority=-10 {
     # B. 创建 TaskStatus 流
     Log::create_stream(TaskStatus::LOG, [$columns=TaskStatus::Info, $path="task_status"]);
 
-    # C. 安全遍历逻辑 (修复 iterator invalidation)
+    # C. 安全遍历逻辑
     # 1. 先创建一个临时集合，把当前的流ID存下来
     local streams_to_process: set[Log::ID];
     for (id in Log::active_streams) {

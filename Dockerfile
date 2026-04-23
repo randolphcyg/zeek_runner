@@ -1,7 +1,7 @@
 # ===========================
 # Global Arguments
 # ===========================
-ARG ZEEK_VER=8.1.1
+ARG ZEEK_VER=8.1.2
 ARG GO_VER=1.26.2-alpine
 ARG ZEEK_KAFKA_VER=2.2
 ARG APT_MIRROR
@@ -37,7 +37,6 @@ RUN \
     ./configure && \
     make && \
     make install && \
-    # 4. 清理编译垃圾
     cd / && rm -rf /zeek-kafka* /zeek-kafka.tar.gz && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
