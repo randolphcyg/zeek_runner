@@ -90,3 +90,19 @@ func TestGRPCServer_Analyze_EmptyPcapID(t *testing.T) {
 		t.Error("expected error for empty pcapID")
 	}
 }
+
+func TestExtractReqFromGRPC_OutputDir(t *testing.T) {
+	req := extractReqFromGRPC(&pb.ExtractRequest{
+		TaskID:               "task-1",
+		Uuid:                 "uuid-1",
+		PcapID:               "pcap-1",
+		PcapPath:             "/tmp/test.pcap",
+		OutputDir:            "/tmp/extracted",
+		ExtractedFileMinSize: 1,
+		ExtractedFileMaxSize: 20,
+	})
+
+	if req.OutputDir != "/tmp/extracted" {
+		t.Fatalf("expected outputDir to be preserved, got %q", req.OutputDir)
+	}
+}

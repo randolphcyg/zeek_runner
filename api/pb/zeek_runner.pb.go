@@ -199,7 +199,7 @@ type ExtractRequest struct {
 	PcapID               string                 `protobuf:"bytes,3,opt,name=pcapID,proto3" json:"pcapID,omitempty"`                              // pcap文件ID
 	PcapPath             string                 `protobuf:"bytes,4,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`                          // pcap文件路径
 	ScriptPath           string                 `protobuf:"bytes,5,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"`                      // 脚本路径（可选，绝对路径）
-	ExtractedFilePath    string                 `protobuf:"bytes,6,opt,name=extractedFilePath,proto3" json:"extractedFilePath,omitempty"`        // 提取文件存储路径
+	OutputDir            string                 `protobuf:"bytes,6,opt,name=outputDir,proto3" json:"outputDir,omitempty"`                        // 提取文件存储路径
 	ExtractedFileMinSize int32                  `protobuf:"varint,7,opt,name=extractedFileMinSize,proto3" json:"extractedFileMinSize,omitempty"` // 提取文件最小大小(KB)
 	ExtractedFileMaxSize int32                  `protobuf:"varint,8,opt,name=extractedFileMaxSize,proto3" json:"extractedFileMaxSize,omitempty"` // 提取文件最大大小(MB)
 	unknownFields        protoimpl.UnknownFields
@@ -271,9 +271,9 @@ func (x *ExtractRequest) GetScriptPath() string {
 	return ""
 }
 
-func (x *ExtractRequest) GetExtractedFilePath() string {
+func (x *ExtractRequest) GetOutputDir() string {
 	if x != nil {
-		return x.ExtractedFilePath
+		return x.OutputDir
 	}
 	return ""
 }
@@ -294,15 +294,15 @@ func (x *ExtractRequest) GetExtractedFileMaxSize() int32 {
 
 // 文件提取响应
 type ExtractResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	TaskID            string                 `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`                       // 任务ID
-	Uuid              string                 `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`                           // UUID
-	PcapPath          string                 `protobuf:"bytes,3,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`                   // pcap文件路径
-	ScriptPath        string                 `protobuf:"bytes,4,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"`               // 脚本路径
-	ExtractedFilePath string                 `protobuf:"bytes,5,opt,name=extractedFilePath,proto3" json:"extractedFilePath,omitempty"` // 提取文件存储路径
-	StartTime         string                 `protobuf:"bytes,6,opt,name=startTime,proto3" json:"startTime,omitempty"`                 // 任务开始时间
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskID        string                 `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`         // 任务ID
+	Uuid          string                 `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`             // UUID
+	PcapPath      string                 `protobuf:"bytes,3,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`     // pcap文件路径
+	ScriptPath    string                 `protobuf:"bytes,4,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"` // 脚本路径
+	OutputDir     string                 `protobuf:"bytes,5,opt,name=outputDir,proto3" json:"outputDir,omitempty"`   // 提取文件存储路径
+	StartTime     string                 `protobuf:"bytes,6,opt,name=startTime,proto3" json:"startTime,omitempty"`   // 任务开始时间
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExtractResponse) Reset() {
@@ -363,9 +363,9 @@ func (x *ExtractResponse) GetScriptPath() string {
 	return ""
 }
 
-func (x *ExtractResponse) GetExtractedFilePath() string {
+func (x *ExtractResponse) GetOutputDir() string {
 	if x != nil {
-		return x.ExtractedFilePath
+		return x.OutputDir
 	}
 	return ""
 }
@@ -629,7 +629,6 @@ func (x *VersionCheckResponse) GetVersion() string {
 	return ""
 }
 
-// Zeek 语法检查请求
 type ZeekSyntaxCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ScriptPath    string                 `protobuf:"bytes,1,opt,name=script_path,json=scriptPath,proto3" json:"script_path,omitempty"`          // 脚本路径
@@ -682,7 +681,6 @@ func (x *ZeekSyntaxCheckRequest) GetScriptContent() string {
 	return ""
 }
 
-// Zeek 语法检查响应
 type ZeekSyntaxCheckResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Valid         bool                   `protobuf:"varint,1,opt,name=valid,proto3" json:"valid,omitempty"` // 是否有效
@@ -735,7 +733,6 @@ func (x *ZeekSyntaxCheckResponse) GetError() string {
 	return ""
 }
 
-// 异步分析请求
 type AsyncAnalyzeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskID        string                 `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`          // 任务ID
@@ -905,7 +902,7 @@ type ExtractAsyncRequest struct {
 	PcapID               string                 `protobuf:"bytes,3,opt,name=pcapID,proto3" json:"pcapID,omitempty"`                              // pcap文件ID
 	PcapPath             string                 `protobuf:"bytes,4,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`                          // pcap文件路径
 	ScriptPath           string                 `protobuf:"bytes,5,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"`                      // 脚本路径（可选，绝对路径）
-	ExtractedFilePath    string                 `protobuf:"bytes,6,opt,name=extractedFilePath,proto3" json:"extractedFilePath,omitempty"`        // 提取文件存储路径
+	OutputDir            string                 `protobuf:"bytes,6,opt,name=outputDir,proto3" json:"outputDir,omitempty"`                        // 提取文件存储路径
 	ExtractedFileMinSize int32                  `protobuf:"varint,7,opt,name=extractedFileMinSize,proto3" json:"extractedFileMinSize,omitempty"` // 提取文件最小大小(KB)
 	ExtractedFileMaxSize int32                  `protobuf:"varint,8,opt,name=extractedFileMaxSize,proto3" json:"extractedFileMaxSize,omitempty"` // 提取文件最大大小(MB)
 	unknownFields        protoimpl.UnknownFields
@@ -977,9 +974,9 @@ func (x *ExtractAsyncRequest) GetScriptPath() string {
 	return ""
 }
 
-func (x *ExtractAsyncRequest) GetExtractedFilePath() string {
+func (x *ExtractAsyncRequest) GetOutputDir() string {
 	if x != nil {
-		return x.ExtractedFilePath
+		return x.OutputDir
 	}
 	return ""
 }
@@ -1115,20 +1112,23 @@ func (x *TaskStatusRequest) GetUuid() string {
 // 任务状态查询响应
 type TaskStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskID        string                 `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`         // 任务ID
-	Uuid          string                 `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`             // UUID
-	PcapID        string                 `protobuf:"bytes,3,opt,name=pcapID,proto3" json:"pcapID,omitempty"`         // pcap文件ID
-	PcapPath      string                 `protobuf:"bytes,4,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`     // pcap文件路径
-	ScriptID      string                 `protobuf:"bytes,5,opt,name=scriptID,proto3" json:"scriptID,omitempty"`     // 脚本ID
-	ScriptPath    string                 `protobuf:"bytes,6,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"` // 脚本路径
-	Status        string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`         // 任务状态
-	CreateTime    string                 `protobuf:"bytes,8,opt,name=createTime,proto3" json:"createTime,omitempty"` // 创建时间
-	StartTime     string                 `protobuf:"bytes,9,opt,name=startTime,proto3" json:"startTime,omitempty"`   // 开始时间
-	EndTime       string                 `protobuf:"bytes,10,opt,name=endTime,proto3" json:"endTime,omitempty"`      // 结束时间
-	Duration      float64                `protobuf:"fixed64,11,opt,name=duration,proto3" json:"duration,omitempty"`  // 执行时长(秒)
-	Error         string                 `protobuf:"bytes,12,opt,name=error,proto3" json:"error,omitempty"`          // 错误信息
-	Output        string                 `protobuf:"bytes,13,opt,name=output,proto3" json:"output,omitempty"`        // 输出内容
-	Retries       int32                  `protobuf:"varint,14,opt,name=retries,proto3" json:"retries,omitempty"`     // 重试次数
+	TaskID        string                 `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`             // 任务ID
+	Uuid          string                 `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`                 // UUID
+	PcapID        string                 `protobuf:"bytes,3,opt,name=pcapID,proto3" json:"pcapID,omitempty"`             // pcap文件ID
+	PcapPath      string                 `protobuf:"bytes,4,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`         // pcap文件路径
+	ScriptID      string                 `protobuf:"bytes,5,opt,name=scriptID,proto3" json:"scriptID,omitempty"`         // 脚本ID
+	ScriptPath    string                 `protobuf:"bytes,6,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"`     // 脚本路径
+	Status        string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`             // 任务状态
+	CreateTime    string                 `protobuf:"bytes,8,opt,name=createTime,proto3" json:"createTime,omitempty"`     // 创建时间
+	StartTime     string                 `protobuf:"bytes,9,opt,name=startTime,proto3" json:"startTime,omitempty"`       // 开始时间
+	EndTime       string                 `protobuf:"bytes,10,opt,name=endTime,proto3" json:"endTime,omitempty"`          // 结束时间
+	Duration      float64                `protobuf:"fixed64,11,opt,name=duration,proto3" json:"duration,omitempty"`      // 执行时长(秒)
+	HitCount      int32                  `protobuf:"varint,12,opt,name=hitCount,proto3" json:"hitCount,omitempty"`       // 命中总数
+	NoticeCount   int32                  `protobuf:"varint,13,opt,name=noticeCount,proto3" json:"noticeCount,omitempty"` // notice日志数
+	IntelCount    int32                  `protobuf:"varint,14,opt,name=intelCount,proto3" json:"intelCount,omitempty"`   // intel日志数
+	Error         string                 `protobuf:"bytes,15,opt,name=error,proto3" json:"error,omitempty"`              // 错误信息
+	Output        string                 `protobuf:"bytes,16,opt,name=output,proto3" json:"output,omitempty"`            // 输出内容
+	Retries       int32                  `protobuf:"varint,17,opt,name=retries,proto3" json:"retries,omitempty"`         // 重试次数
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1240,6 +1240,27 @@ func (x *TaskStatusResponse) GetDuration() float64 {
 	return 0
 }
 
+func (x *TaskStatusResponse) GetHitCount() int32 {
+	if x != nil {
+		return x.HitCount
+	}
+	return 0
+}
+
+func (x *TaskStatusResponse) GetNoticeCount() int32 {
+	if x != nil {
+		return x.NoticeCount
+	}
+	return 0
+}
+
+func (x *TaskStatusResponse) GetIntelCount() int32 {
+	if x != nil {
+		return x.IntelCount
+	}
+	return 0
+}
+
 func (x *TaskStatusResponse) GetError() string {
 	if x != nil {
 		return x.Error
@@ -1309,12 +1330,15 @@ func (x *ParentTaskStatusRequest) GetTaskID() string {
 // 子任务摘要
 type SubTaskSummary struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`             // 子任务UUID
-	ScriptID      string                 `protobuf:"bytes,2,opt,name=scriptID,proto3" json:"scriptID,omitempty"`     // 脚本ID
-	ScriptPath    string                 `protobuf:"bytes,3,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"` // 脚本路径
-	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`         // 状态
-	Duration      float64                `protobuf:"fixed64,5,opt,name=duration,proto3" json:"duration,omitempty"`   // 执行时长(秒)
-	Error         string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`           // 错误信息
+	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`                // 子任务UUID
+	ScriptID      string                 `protobuf:"bytes,2,opt,name=scriptID,proto3" json:"scriptID,omitempty"`        // 脚本ID
+	ScriptPath    string                 `protobuf:"bytes,3,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"`    // 脚本路径
+	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`            // 状态
+	Duration      float64                `protobuf:"fixed64,5,opt,name=duration,proto3" json:"duration,omitempty"`      // 执行时长(秒)
+	Error         string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`              // 错误信息
+	HitCount      int32                  `protobuf:"varint,7,opt,name=hitCount,proto3" json:"hitCount,omitempty"`       // 命中总数
+	NoticeCount   int32                  `protobuf:"varint,8,opt,name=noticeCount,proto3" json:"noticeCount,omitempty"` // notice日志数
+	IntelCount    int32                  `protobuf:"varint,9,opt,name=intelCount,proto3" json:"intelCount,omitempty"`   // intel日志数
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1391,6 +1415,27 @@ func (x *SubTaskSummary) GetError() string {
 	return ""
 }
 
+func (x *SubTaskSummary) GetHitCount() int32 {
+	if x != nil {
+		return x.HitCount
+	}
+	return 0
+}
+
+func (x *SubTaskSummary) GetNoticeCount() int32 {
+	if x != nil {
+		return x.NoticeCount
+	}
+	return 0
+}
+
+func (x *SubTaskSummary) GetIntelCount() int32 {
+	if x != nil {
+		return x.IntelCount
+	}
+	return 0
+}
+
 // 父任务状态查询响应
 type ParentTaskStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1403,6 +1448,9 @@ type ParentTaskStatusResponse struct {
 	TimeoutCount  int32                  `protobuf:"varint,7,opt,name=timeoutCount,proto3" json:"timeoutCount,omitempty"` // 超时数
 	Status        string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`              // 聚合状态: pending/running/completed/partial_failed/failed
 	SubTasks      []*SubTaskSummary      `protobuf:"bytes,9,rep,name=subTasks,proto3" json:"subTasks,omitempty"`          // 子任务列表
+	HitCount      int32                  `protobuf:"varint,10,opt,name=hitCount,proto3" json:"hitCount,omitempty"`        // 所有子任务命中总数
+	NoticeCount   int32                  `protobuf:"varint,11,opt,name=noticeCount,proto3" json:"noticeCount,omitempty"`  // 所有子任务notice日志总数
+	IntelCount    int32                  `protobuf:"varint,12,opt,name=intelCount,proto3" json:"intelCount,omitempty"`    // 所有子任务intel日志总数
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1500,6 +1548,27 @@ func (x *ParentTaskStatusResponse) GetSubTasks() []*SubTaskSummary {
 	return nil
 }
 
+func (x *ParentTaskStatusResponse) GetHitCount() int32 {
+	if x != nil {
+		return x.HitCount
+	}
+	return 0
+}
+
+func (x *ParentTaskStatusResponse) GetNoticeCount() int32 {
+	if x != nil {
+		return x.NoticeCount
+	}
+	return 0
+}
+
+func (x *ParentTaskStatusResponse) GetIntelCount() int32 {
+	if x != nil {
+		return x.IntelCount
+	}
+	return 0
+}
+
 var File_api_pb_zeek_runner_proto protoreflect.FileDescriptor
 
 const file_api_pb_zeek_runner_proto_rawDesc = "" +
@@ -1524,7 +1593,7 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\n" +
 	"scriptPath\x18\x04 \x01(\tR\n" +
 	"scriptPath\x12\x1c\n" +
-	"\tstartTime\x18\x05 \x01(\tR\tstartTime\"\xa6\x02\n" +
+	"\tstartTime\x18\x05 \x01(\tR\tstartTime\"\x96\x02\n" +
 	"\x0eExtractRequest\x12\x16\n" +
 	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12\x12\n" +
 	"\x04uuid\x18\x02 \x01(\tR\x04uuid\x12\x16\n" +
@@ -1532,18 +1601,18 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\bpcapPath\x18\x04 \x01(\tR\bpcapPath\x12\x1e\n" +
 	"\n" +
 	"scriptPath\x18\x05 \x01(\tR\n" +
-	"scriptPath\x12,\n" +
-	"\x11extractedFilePath\x18\x06 \x01(\tR\x11extractedFilePath\x122\n" +
+	"scriptPath\x12\x1c\n" +
+	"\toutputDir\x18\x06 \x01(\tR\toutputDir\x122\n" +
 	"\x14extractedFileMinSize\x18\a \x01(\x05R\x14extractedFileMinSize\x122\n" +
-	"\x14extractedFileMaxSize\x18\b \x01(\x05R\x14extractedFileMaxSize\"\xc5\x01\n" +
+	"\x14extractedFileMaxSize\x18\b \x01(\x05R\x14extractedFileMaxSize\"\xb5\x01\n" +
 	"\x0fExtractResponse\x12\x16\n" +
 	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12\x12\n" +
 	"\x04uuid\x18\x02 \x01(\tR\x04uuid\x12\x1a\n" +
 	"\bpcapPath\x18\x03 \x01(\tR\bpcapPath\x12\x1e\n" +
 	"\n" +
 	"scriptPath\x18\x04 \x01(\tR\n" +
-	"scriptPath\x12,\n" +
-	"\x11extractedFilePath\x18\x05 \x01(\tR\x11extractedFilePath\x12\x1c\n" +
+	"scriptPath\x12\x1c\n" +
+	"\toutputDir\x18\x05 \x01(\tR\toutputDir\x12\x1c\n" +
 	"\tstartTime\x18\x06 \x01(\tR\tstartTime\"\x14\n" +
 	"\x12HealthCheckRequest\"\xb2\x02\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
@@ -1591,7 +1660,7 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1e\n" +
 	"\n" +
 	"createTime\x18\x04 \x01(\tR\n" +
-	"createTime\"\xab\x02\n" +
+	"createTime\"\x9b\x02\n" +
 	"\x13ExtractAsyncRequest\x12\x16\n" +
 	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12\x12\n" +
 	"\x04uuid\x18\x02 \x01(\tR\x04uuid\x12\x16\n" +
@@ -1599,8 +1668,8 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\bpcapPath\x18\x04 \x01(\tR\bpcapPath\x12\x1e\n" +
 	"\n" +
 	"scriptPath\x18\x05 \x01(\tR\n" +
-	"scriptPath\x12,\n" +
-	"\x11extractedFilePath\x18\x06 \x01(\tR\x11extractedFilePath\x122\n" +
+	"scriptPath\x12\x1c\n" +
+	"\toutputDir\x18\x06 \x01(\tR\toutputDir\x122\n" +
 	"\x14extractedFileMinSize\x18\a \x01(\x05R\x14extractedFileMinSize\x122\n" +
 	"\x14extractedFileMaxSize\x18\b \x01(\x05R\x14extractedFileMaxSize\"z\n" +
 	"\x14ExtractAsyncResponse\x12\x16\n" +
@@ -1611,7 +1680,7 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"createTime\x18\x04 \x01(\tR\n" +
 	"createTime\"'\n" +
 	"\x11TaskStatusRequest\x12\x12\n" +
-	"\x04uuid\x18\x01 \x01(\tR\x04uuid\"\x84\x03\n" +
+	"\x04uuid\x18\x01 \x01(\tR\x04uuid\"\xe2\x03\n" +
 	"\x12TaskStatusResponse\x12\x16\n" +
 	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12\x12\n" +
 	"\x04uuid\x18\x02 \x01(\tR\x04uuid\x12\x16\n" +
@@ -1628,12 +1697,17 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\tstartTime\x18\t \x01(\tR\tstartTime\x12\x18\n" +
 	"\aendTime\x18\n" +
 	" \x01(\tR\aendTime\x12\x1a\n" +
-	"\bduration\x18\v \x01(\x01R\bduration\x12\x14\n" +
-	"\x05error\x18\f \x01(\tR\x05error\x12\x16\n" +
-	"\x06output\x18\r \x01(\tR\x06output\x12\x18\n" +
-	"\aretries\x18\x0e \x01(\x05R\aretries\"1\n" +
+	"\bduration\x18\v \x01(\x01R\bduration\x12\x1a\n" +
+	"\bhitCount\x18\f \x01(\x05R\bhitCount\x12 \n" +
+	"\vnoticeCount\x18\r \x01(\x05R\vnoticeCount\x12\x1e\n" +
+	"\n" +
+	"intelCount\x18\x0e \x01(\x05R\n" +
+	"intelCount\x12\x14\n" +
+	"\x05error\x18\x0f \x01(\tR\x05error\x12\x16\n" +
+	"\x06output\x18\x10 \x01(\tR\x06output\x12\x18\n" +
+	"\aretries\x18\x11 \x01(\x05R\aretries\"1\n" +
 	"\x17ParentTaskStatusRequest\x12\x16\n" +
-	"\x06taskID\x18\x01 \x01(\tR\x06taskID\"\xaa\x01\n" +
+	"\x06taskID\x18\x01 \x01(\tR\x06taskID\"\x88\x02\n" +
 	"\x0eSubTaskSummary\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\x1a\n" +
 	"\bscriptID\x18\x02 \x01(\tR\bscriptID\x12\x1e\n" +
@@ -1642,7 +1716,12 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"scriptPath\x12\x16\n" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12\x1a\n" +
 	"\bduration\x18\x05 \x01(\x01R\bduration\x12\x14\n" +
-	"\x05error\x18\x06 \x01(\tR\x05error\"\xd5\x02\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1a\n" +
+	"\bhitCount\x18\a \x01(\x05R\bhitCount\x12 \n" +
+	"\vnoticeCount\x18\b \x01(\x05R\vnoticeCount\x12\x1e\n" +
+	"\n" +
+	"intelCount\x18\t \x01(\x05R\n" +
+	"intelCount\"\xb3\x03\n" +
 	"\x18ParentTaskStatusResponse\x12\x16\n" +
 	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12\x1e\n" +
 	"\n" +
@@ -1654,7 +1733,13 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\vfailedCount\x18\x06 \x01(\x05R\vfailedCount\x12\"\n" +
 	"\ftimeoutCount\x18\a \x01(\x05R\ftimeoutCount\x12\x16\n" +
 	"\x06status\x18\b \x01(\tR\x06status\x127\n" +
-	"\bsubTasks\x18\t \x03(\v2\x1b.zeek_runner.SubTaskSummaryR\bsubTasks2\x98\x06\n" +
+	"\bsubTasks\x18\t \x03(\v2\x1b.zeek_runner.SubTaskSummaryR\bsubTasks\x12\x1a\n" +
+	"\bhitCount\x18\n" +
+	" \x01(\x05R\bhitCount\x12 \n" +
+	"\vnoticeCount\x18\v \x01(\x05R\vnoticeCount\x12\x1e\n" +
+	"\n" +
+	"intelCount\x18\f \x01(\x05R\n" +
+	"intelCount2\x98\x06\n" +
 	"\x13ZeekAnalysisService\x12F\n" +
 	"\aAnalyze\x12\x1b.zeek_runner.AnalyzeRequest\x1a\x1c.zeek_runner.AnalyzeResponse\"\x00\x12U\n" +
 	"\fAsyncAnalyze\x12 .zeek_runner.AsyncAnalyzeRequest\x1a!.zeek_runner.AsyncAnalyzeResponse\"\x00\x12F\n" +

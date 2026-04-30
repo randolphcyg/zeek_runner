@@ -53,7 +53,6 @@ func (h *HTTPHandler) HandleExtract(c *gin.Context) {
 		response(c, http.StatusBadRequest, "invalid params", err)
 		return
 	}
-
 	if err := validateExtractReq(req); err != nil {
 		response(c, http.StatusBadRequest, err.Error(), nil)
 		return
@@ -111,7 +110,6 @@ func (h *HTTPHandler) HandleExtractAsync(c *gin.Context) {
 		response(c, http.StatusBadRequest, "invalid params", err)
 		return
 	}
-
 	if err := validateExtractReq(req); err != nil {
 		response(c, http.StatusBadRequest, err.Error(), nil)
 		return
@@ -198,7 +196,7 @@ func doSyntaxCheck(scriptPath, scriptContent string) (*SyntaxCheckResult, error)
 		defer cleanup()
 	}
 
-	cmd := exec.Command("zeek", "--parse-only", inputPath)
+	cmd := exec.Command("zeek", "--parse-only", inputPath, customConfigPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		errMsg := strings.TrimSpace(string(output))

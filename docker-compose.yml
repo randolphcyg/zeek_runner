@@ -1,17 +1,20 @@
-x-zeek-runner-common: &zeek-runner-common
+x-zeek-runner-common:
+  &zeek-runner-common
   image: zeek_runner:latest
   restart: unless-stopped
   depends_on:
     redis:
       condition: service_healthy
-  volumes: &zeek-runner-volumes
+  volumes:
+    &zeek-runner-volumes
     - ./pcaps:/opt/zeek_runner/pcaps
     - ./scripts:/opt/zeek_runner/scripts
     - ./file_extract_script:/opt/zeek_runner/file_extract_script
     - ./extracted:/opt/zeek_runner/extracted
-    - ./custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek
-    - ./config.yaml:/opt/zeek_runner/config.yaml:ro
-  logging: &zeek-runner-logging
+    - ./custom:/usr/local/zeek/share/zeek/base/custom
+    - ./config.local.yaml:/opt/zeek_runner/config.yaml:ro
+  logging:
+    &zeek-runner-logging
     driver: json-file
     options:
       max-size: "100m"
@@ -23,7 +26,7 @@ services:
     container_name: zeek_redis
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "6381:6379"
     volumes:
       - redis_data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -43,22 +46,22 @@ services:
     <<: *zeek-runner-common
     container_name: zeek_runner_1
     ports:
-      - "18001:8000"
-      - "50051:50051"
+      - "18011:8000"
+      - "50061:50051"
 
   zeek_runner_2:
     <<: *zeek-runner-common
     container_name: zeek_runner_2
     ports:
-      - "18002:8000"
-      - "50052:50051"
+      - "18012:8000"
+      - "50062:50051"
 
   zeek_runner_3:
     <<: *zeek-runner-common
     container_name: zeek_runner_3
     ports:
-      - "18003:8000"
-      - "50053:50051"
+      - "18013:8000"
+      - "50063:50051"
 
   nginx:
     image: nginx:1.28-alpine
@@ -69,8 +72,8 @@ services:
       - zeek_runner_2
       - zeek_runner_3
     ports:
-      - "18080:80"
-      - "50050:50050"
+      - "18081:80"
+      - "50060:50050"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     logging:

@@ -29,7 +29,7 @@ message ExtractRequest {
   string pcapID = 3;           // pcap文件ID
   string pcapPath = 4;         // pcap文件路径
   string scriptPath = 5;       // 脚本路径（可选，绝对路径）
-  string extractedFilePath = 6;// 提取文件存储路径
+  string outputDir = 6;        // 提取文件存储路径
   int32 extractedFileMinSize = 7;// 提取文件最小大小(KB)
   int32 extractedFileMaxSize = 8;// 提取文件最大大小(MB)
 }
@@ -40,7 +40,7 @@ message ExtractResponse {
   string uuid = 2;             // UUID
   string pcapPath = 3;         // pcap文件路径
   string scriptPath = 4;       // 脚本路径
-  string extractedFilePath = 5;// 提取文件存储路径
+  string outputDir = 5;        // 提取文件存储路径
   string startTime = 6;        // 任务开始时间
 }
 
@@ -72,19 +72,16 @@ message VersionCheckResponse {
   string version = 2;          // 版本信息
 }
 
-// Zeek 语法检查请求
 message ZeekSyntaxCheckRequest {
   string script_path = 1;      // 脚本路径
   string script_content = 2;   // 脚本内容
 }
 
-// Zeek 语法检查响应
 message ZeekSyntaxCheckResponse {
   bool valid = 1;              // 是否有效
   string error = 2;            // 错误信息
 }
 
-// 异步分析请求
 message AsyncAnalyzeRequest {
   string taskID = 1;           // 任务ID
   string uuid = 2;             // UUID
@@ -110,7 +107,7 @@ message ExtractAsyncRequest {
   string pcapID = 3;           // pcap文件ID
   string pcapPath = 4;         // pcap文件路径
   string scriptPath = 5;       // 脚本路径（可选，绝对路径）
-  string extractedFilePath = 6;// 提取文件存储路径
+  string outputDir = 6;        // 提取文件存储路径
   int32 extractedFileMinSize = 7;// 提取文件最小大小(KB)
   int32 extractedFileMaxSize = 8;// 提取文件最大大小(MB)
 }
@@ -141,9 +138,12 @@ message TaskStatusResponse {
   string startTime = 9;        // 开始时间
   string endTime = 10;         // 结束时间
   double duration = 11;        // 执行时长(秒)
-  string error = 12;           // 错误信息
-  string output = 13;          // 输出内容
-  int32 retries = 14;          // 重试次数
+  int32 hitCount = 12;         // 命中总数
+  int32 noticeCount = 13;      // notice日志数
+  int32 intelCount = 14;       // intel日志数
+  string error = 15;           // 错误信息
+  string output = 16;          // 输出内容
+  int32 retries = 17;          // 重试次数
 }
 
 // 父任务状态查询请求
@@ -159,6 +159,9 @@ message SubTaskSummary {
   string status = 4;           // 状态
   double duration = 5;         // 执行时长(秒)
   string error = 6;            // 错误信息
+  int32 hitCount = 7;          // 命中总数
+  int32 noticeCount = 8;       // notice日志数
+  int32 intelCount = 9;        // intel日志数
 }
 
 // 父任务状态查询响应
@@ -172,6 +175,9 @@ message ParentTaskStatusResponse {
   int32 timeoutCount = 7;      // 超时数
   string status = 8;           // 聚合状态: pending/running/completed/partial_failed/failed
   repeated SubTaskSummary subTasks = 9; // 子任务列表
+  int32 hitCount = 10;         // 所有子任务命中总数
+  int32 noticeCount = 11;      // 所有子任务notice日志总数
+  int32 intelCount = 12;       // 所有子任务intel日志总数
 }
 
 // gRPC服务定义

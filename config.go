@@ -178,6 +178,8 @@ func loadConfig() *Config {
 			MaxSendMsgSize:    getEnvInt("GRPC_MAX_SEND_MSG_SIZE", 16*1024*1024),
 			EnableReflection:  getEnvBool("GRPC_ENABLE_REFLECTION", true),
 			EnableHealthCheck: getEnvBool("GRPC_ENABLE_HEALTH_CHECK", true),
+			AuthTokens:        authTokens,
+			AuthTokenMap:      authTokenMap,
 		},
 		OTel: OTelConfig{
 			Enabled:  getEnvBool("OTEL_ENABLED", false),

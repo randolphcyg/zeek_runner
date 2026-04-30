@@ -24,11 +24,7 @@ func NewGRPCServer(service *Service, app *App) *GRPCServer {
 }
 
 func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.AnalyzeResponse, error) {
-	ar := AnalyzeReq{
-		TaskID: req.TaskID, UUID: req.Uuid, OnlyNotice: req.OnlyNotice,
-		PcapID: req.PcapID, PcapPath: req.PcapPath,
-		ScriptID: req.ScriptID, ScriptPath: req.ScriptPath,
-	}
+	ar := analyzeReqFromGRPC(req)
 
 	if err := validateReq(ar); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -50,12 +46,7 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 
 // Extract 处理同步文件提取请求
 func (s *GRPCServer) Extract(ctx context.Context, req *pb.ExtractRequest) (*pb.ExtractResponse, error) {
-	er := ExtractReq{
-		TaskID: req.TaskID, UUID: req.Uuid,
-		PcapID: req.PcapID, PcapPath: req.PcapPath, ScriptPath: req.ScriptPath,
-		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
-		ExtractedFileMaxSize: int(req.ExtractedFileMaxSize),
-	}
+	er := extractReqFromGRPC(req)
 
 	if err := validateExtractReq(er); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -71,7 +62,7 @@ func (s *GRPCServer) Extract(ctx context.Context, req *pb.ExtractRequest) (*pb.E
 
 	return &pb.ExtractResponse{
 		TaskID: resp.TaskID, Uuid: resp.UUID,
-		PcapPath: resp.PcapPath, ExtractedFilePath: resp.ExtractedFilePath, StartTime: resp.StartTime,
+		PcapPath: resp.PcapPath, OutputDir: resp.OutputDir, StartTime: resp.StartTime,
 	}, nil
 }
 
@@ -147,11 +138,7 @@ func (s *GRPCServer) ZeekSyntaxCheck(ctx context.Context, req *pb.ZeekSyntaxChec
 }
 
 func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeRequest) (*pb.AsyncAnalyzeResponse, error) {
-	ar := AnalyzeReq{
-		TaskID: req.TaskID, UUID: req.Uuid, OnlyNotice: req.OnlyNotice,
-		PcapID: req.PcapID, PcapPath: req.PcapPath,
-		ScriptID: req.ScriptID, ScriptPath: req.ScriptPath,
-	}
+	ar := asyncAnalyzeReqFromGRPC(req)
 
 	if err := validateReq(ar); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -178,12 +165,7 @@ func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeReque
 
 // ExtractAsync 处理异步文件提取请求
 func (s *GRPCServer) ExtractAsync(ctx context.Context, req *pb.ExtractAsyncRequest) (*pb.ExtractAsyncResponse, error) {
-	er := ExtractReq{
-		TaskID: req.TaskID, UUID: req.Uuid,
-		PcapID: req.PcapID, PcapPath: req.PcapPath, ScriptPath: req.ScriptPath,
-		ExtractedFilePath: req.ExtractedFilePath, ExtractedFileMinSize: int(req.ExtractedFileMinSize),
-		ExtractedFileMaxSize: int(req.ExtractedFileMaxSize),
-	}
+	er := extractAsyncReqFromGRPC(req)
 
 	if err := validateExtractReq(er); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -215,20 +197,23 @@ func (s *GRPCServer) GetTaskStatus(ctx context.Context, req *pb.TaskStatusReques
 	}
 
 	return &pb.TaskStatusResponse{
-		TaskID:     task.TaskID,
-		Uuid:       task.UUID,
-		PcapID:     task.PcapID,
-		PcapPath:   task.PcapPath,
-		ScriptID:   task.ScriptID,
-		ScriptPath: task.ScriptPath,
-		Status:     string(task.Status),
-		CreateTime: task.CreateTime.Format(time.RFC3339),
-		StartTime:  task.StartTime.Format(time.RFC3339),
-		EndTime:    task.EndTime.Format(time.RFC3339),
-		Duration:   task.Duration,
-		Error:      task.Error,
-		Output:     task.Output,
-		Retries:    int32(task.Retries),
+		TaskID:      task.TaskID,
+		Uuid:        task.UUID,
+		PcapID:      task.PcapID,
+		PcapPath:    task.PcapPath,
+		ScriptID:    task.ScriptID,
+		ScriptPath:  task.ScriptPath,
+		Status:      string(task.Status),
+		CreateTime:  task.CreateTime.Format(time.RFC3339),
+		StartTime:   task.StartTime.Format(time.RFC3339),
+		EndTime:     task.EndTime.Format(time.RFC3339),
+		Duration:    task.Duration,
+		HitCount:    int32(task.HitCount),
+		NoticeCount: int32(task.NoticeCount),
+		IntelCount:  int32(task.IntelCount),
+		Error:       task.Error,
+		Output:      task.Output,
+		Retries:     int32(task.Retries),
 	}, nil
 }
 
@@ -241,12 +226,15 @@ func (s *GRPCServer) GetParentTaskStatus(ctx context.Context, req *pb.ParentTask
 	subTasks := make([]*pb.SubTaskSummary, len(parentStatus.SubTasks))
 	for i, task := range parentStatus.SubTasks {
 		subTasks[i] = &pb.SubTaskSummary{
-			Uuid:       task.UUID,
-			ScriptID:   task.ScriptID,
-			ScriptPath: task.ScriptPath,
-			Status:     string(task.Status),
-			Duration:   task.Duration,
-			Error:      task.Error,
+			Uuid:        task.UUID,
+			ScriptID:    task.ScriptID,
+			ScriptPath:  task.ScriptPath,
+			Status:      string(task.Status),
+			Duration:    task.Duration,
+			HitCount:    int32(task.HitCount),
+			NoticeCount: int32(task.NoticeCount),
+			IntelCount:  int32(task.IntelCount),
+			Error:       task.Error,
 		}
 	}
 
@@ -258,7 +246,60 @@ func (s *GRPCServer) GetParentTaskStatus(ctx context.Context, req *pb.ParentTask
 		SuccessCount: int32(parentStatus.SuccessCount),
 		FailedCount:  int32(parentStatus.FailedCount),
 		TimeoutCount: int32(parentStatus.TimeoutCount),
+		HitCount:     int32(parentStatus.HitCount),
+		NoticeCount:  int32(parentStatus.NoticeCount),
+		IntelCount:   int32(parentStatus.IntelCount),
 		Status:       parentStatus.Status,
 		SubTasks:     subTasks,
 	}, nil
+}
+
+func analyzeReqFromGRPC(req *pb.AnalyzeRequest) AnalyzeReq {
+	return AnalyzeReq{
+		TaskID:     req.TaskID,
+		UUID:       req.Uuid,
+		OnlyNotice: req.OnlyNotice,
+		PcapID:     req.PcapID,
+		PcapPath:   req.PcapPath,
+		ScriptID:   req.ScriptID,
+		ScriptPath: req.ScriptPath,
+	}
+}
+
+func asyncAnalyzeReqFromGRPC(req *pb.AsyncAnalyzeRequest) AnalyzeReq {
+	return AnalyzeReq{
+		TaskID:     req.TaskID,
+		UUID:       req.Uuid,
+		OnlyNotice: req.OnlyNotice,
+		PcapID:     req.PcapID,
+		PcapPath:   req.PcapPath,
+		ScriptID:   req.ScriptID,
+		ScriptPath: req.ScriptPath,
+	}
+}
+
+func extractReqFromGRPC(req *pb.ExtractRequest) ExtractReq {
+	return ExtractReq{
+		TaskID:               req.TaskID,
+		UUID:                 req.Uuid,
+		PcapID:               req.PcapID,
+		PcapPath:             req.PcapPath,
+		ScriptPath:           req.ScriptPath,
+		OutputDir:            req.OutputDir,
+		ExtractedFileMinSize: int(req.ExtractedFileMinSize),
+		ExtractedFileMaxSize: int(req.ExtractedFileMaxSize),
+	}
+}
+
+func extractAsyncReqFromGRPC(req *pb.ExtractAsyncRequest) ExtractReq {
+	return ExtractReq{
+		TaskID:               req.TaskID,
+		UUID:                 req.Uuid,
+		PcapID:               req.PcapID,
+		PcapPath:             req.PcapPath,
+		ScriptPath:           req.ScriptPath,
+		OutputDir:            req.OutputDir,
+		ExtractedFileMinSize: int(req.ExtractedFileMinSize),
+		ExtractedFileMaxSize: int(req.ExtractedFileMaxSize),
+	}
 }

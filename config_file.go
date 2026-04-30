@@ -145,6 +145,13 @@ func MergeConfigWithEnv(fileCfg *Config, envCfg *Config) *Config {
 	if fileCfg.GRPC.EnableHealthCheck {
 		result.GRPC.EnableHealthCheck = true
 	}
+	if len(fileCfg.GRPC.AuthTokens) > 0 && os.Getenv("AUTH_TOKENS") == "" {
+		result.GRPC.AuthTokens = fileCfg.GRPC.AuthTokens
+		result.GRPC.AuthTokenMap = make(map[string]bool)
+		for _, token := range fileCfg.GRPC.AuthTokens {
+			result.GRPC.AuthTokenMap[token] = true
+		}
+	}
 
 	if fileCfg.OTel.Enabled && os.Getenv("OTEL_ENABLED") == "" {
 		result.OTel.Enabled = true
