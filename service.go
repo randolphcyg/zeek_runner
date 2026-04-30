@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -19,13 +18,25 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	customConfigPath         = "/usr/local/zeek/share/zeek/base/custom/config.zeek"
+	defaultExtractScriptPath = "/opt/zeek_runner/file_extract_script/extract_file.zeek"
+	maxCommandOutputBytes    = 8192
+	outputTruncatedMarker    = "\n...[truncated]\n"
+)
+
 type LimitWriter struct {
-	w io.Writer
-	n int64
+	w         io.Writer
+	n         int64
+	truncated bool
 }
 
 func (l *LimitWriter) Write(p []byte) (n int, err error) {
 	if l.n <= 0 {
+		if !l.truncated {
+			l.truncated = true
+			_, _ = io.WriteString(l.w, outputTruncatedMarker)
+		}
 		return len(p), nil
 	}
 	if int64(len(p)) > l.n {
@@ -33,7 +44,24 @@ func (l *LimitWriter) Write(p []byte) (n int, err error) {
 	}
 	n, err = l.w.Write(p)
 	l.n -= int64(n)
+	if l.n <= 0 && !l.truncated {
+		l.truncated = true
+		_, _ = io.WriteString(l.w, outputTruncatedMarker)
+	}
 	return
+}
+
+type zeekRunOptions struct {
+	taskID     string
+	uuid       string
+	taskType   string
+	pcapID     string
+	pcapPath   string
+	scriptID   string
+	scriptPath string
+	outputDir  string
+	env        map[string]string
+	afterRun   func(context.Context)
 }
 
 type AnalyzeReq struct {
@@ -44,7 +72,6 @@ type AnalyzeReq struct {
 	PcapPath             string `json:"pcapPath"`
 	ScriptID             string `json:"scriptID"`
 	ScriptPath           string `json:"scriptPath"`
-	ExtractedFilePath    string `json:"extractedFilePath"`
 	ExtractedFileMinSize int    `json:"extractedFileMinSize"`
 }
 
@@ -62,29 +89,49 @@ type ExtractReq struct {
 	PcapID               string `json:"pcapID"`
 	PcapPath             string `json:"pcapPath"`
 	ScriptPath           string `json:"scriptPath"`
-	ExtractedFilePath    string `json:"extractedFilePath"`
+	OutputDir            string `json:"outputDir"`
 	ExtractedFileMinSize int    `json:"extractedFileMinSize"`
 	ExtractedFileMaxSize int    `json:"extractedFileMaxSize"`
 }
 
 type ExtractResp struct {
-	TaskID            string `json:"taskID"`
-	UUID              string `json:"uuid"`
-	PcapPath          string `json:"pcapPath"`
-	ScriptPath        string `json:"scriptPath"`
-	ExtractedFilePath string `json:"extractedFilePath"`
-	StartTime         string `json:"startTime"`
+	TaskID     string `json:"taskID"`
+	UUID       string `json:"uuid"`
+	PcapPath   string `json:"pcapPath"`
+	ScriptPath string `json:"scriptPath"`
+	OutputDir  string `json:"outputDir"`
+	StartTime  string `json:"startTime"`
+}
+
+type taskExecutionResult struct {
+	result    zeekRunResult
+	err       error
+	startTime time.Time
+}
+
+type zeekRunResult struct {
+	output []byte
+	stats  zeekLogStats
 }
 
 type Service struct {
-	pool          *ants.Pool
-	configManager *ConfigManager
-	taskManager   *TaskManager
-	fileDedupMgr  *FileDedupManager
+	pool              *ants.Pool
+	configManager     *ConfigManager
+	taskManager       *TaskManager
+	fileDedupMgr      *FileDedupManager
+	analysisPublisher *analysisEventPublisher
+	extractPublisher  *extractEventPublisher
 }
 
 func NewService(pool *ants.Pool, cm *ConfigManager, tm *TaskManager, fdm *FileDedupManager) *Service {
-	return &Service{pool: pool, configManager: cm, taskManager: tm, fileDedupMgr: fdm}
+	return &Service{
+		pool:              pool,
+		configManager:     cm,
+		taskManager:       tm,
+		fileDedupMgr:      fdm,
+		analysisPublisher: newAnalysisEventPublisher(cm.Get().Kafka.Brokers),
+		extractPublisher:  newExtractEventPublisher(cm.Get().Kafka.Brokers),
+	}
 }
 
 func (s *Service) getConfig() *Config {
@@ -92,129 +139,34 @@ func (s *Service) getConfig() *Config {
 }
 
 func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*AnalyzeResp, error) {
-	type result struct {
-		output    []byte
-		err       error
-		startTime time.Time
-	}
-	resultChan := make(chan result, 1)
-	enqueueTime := time.Now()
-
-	cfg := s.getConfig()
-	err := s.pool.Submit(func() {
-		if ctx.Err() != nil {
-			return
-		}
-
-		actualStartTime := time.Now()
-		queueDuration := actualStartTime.Sub(enqueueTime)
-		if queueDuration > 500*time.Millisecond {
-			LogTaskEvent("queue_wait", req.TaskID, req.UUID,
-				"wait_ms", queueDuration.Milliseconds(),
-				"pool_running", s.pool.Running(),
-			)
-		}
-
-		out, e := s.runZeekAnalysis(ctx, req)
-		select {
-		case resultChan <- result{
-			output:    out,
-			err:       e,
-			startTime: actualStartTime,
-		}:
-		case <-ctx.Done():
-		}
-	})
-
+	res, err := s.executeOfflineTaskInPool(ctx, newOfflineScanTask(req))
 	if err != nil {
-		if errors.Is(err, ants.ErrPoolOverload) {
-			RecordTask("rejected", 0)
-			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.Pool.Size)
-		}
-		RecordTask("error", 0)
-		return nil, status.Errorf(codes.Internal, "submit failed: %v", err)
+		return nil, err
 	}
 
-	select {
-	case res := <-resultChan:
-		duration := time.Since(enqueueTime).Seconds()
-		if res.err != nil {
-			RecordTask("failed", duration)
-			return nil, fmt.Errorf("%w | output: %s", res.err, string(res.output))
-		}
-		RecordTask("success", duration)
-		return &AnalyzeResp{
-			TaskID: req.TaskID, UUID: req.UUID,
-			PcapPath: req.PcapPath, ScriptPath: req.ScriptPath,
-			StartTime: res.startTime.Format(time.RFC3339),
-		}, nil
-	case <-ctx.Done():
-		RecordTask("canceled", time.Since(enqueueTime).Seconds())
-		return nil, ctx.Err()
-	}
+	return &AnalyzeResp{
+		TaskID:     req.TaskID,
+		UUID:       req.UUID,
+		PcapPath:   req.PcapPath,
+		ScriptPath: req.ScriptPath,
+		StartTime:  res.startTime.Format(time.RFC3339),
+	}, nil
 }
 
 func (s *Service) ExecuteExtractTask(ctx context.Context, req ExtractReq) (*ExtractResp, error) {
-	type result struct {
-		output    []byte
-		err       error
-		startTime time.Time
-	}
-	resultChan := make(chan result, 1)
-	enqueueTime := time.Now()
-
-	cfg := s.getConfig()
-	err := s.pool.Submit(func() {
-		if ctx.Err() != nil {
-			return
-		}
-
-		actualStartTime := time.Now()
-		queueDuration := actualStartTime.Sub(enqueueTime)
-		if queueDuration > 500*time.Millisecond {
-			LogTaskEvent("queue_wait", req.TaskID, req.UUID,
-				"wait_ms", queueDuration.Milliseconds(),
-				"pool_running", s.pool.Running(),
-			)
-		}
-
-		out, e := s.runExtractAnalysis(ctx, req)
-		select {
-		case resultChan <- result{
-			output:    out,
-			err:       e,
-			startTime: actualStartTime,
-		}:
-		case <-ctx.Done():
-		}
-	})
-
+	res, err := s.executeOfflineTaskInPool(ctx, newOfflineExtractTask(req))
 	if err != nil {
-		if errors.Is(err, ants.ErrPoolOverload) {
-			RecordTask("rejected", 0)
-			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.Pool.Size)
-		}
-		RecordTask("error", 0)
-		return nil, status.Errorf(codes.Internal, "submit failed: %v", err)
+		return nil, err
 	}
 
-	select {
-	case res := <-resultChan:
-		duration := time.Since(enqueueTime).Seconds()
-		if res.err != nil {
-			RecordTask("failed", duration)
-			return nil, fmt.Errorf("%w | output: %s", res.err, string(res.output))
-		}
-		RecordTask("success", duration)
-		return &ExtractResp{
-			TaskID: req.TaskID, UUID: req.UUID,
-			PcapPath: req.PcapPath, ExtractedFilePath: req.ExtractedFilePath,
-			StartTime: res.startTime.Format(time.RFC3339),
-		}, nil
-	case <-ctx.Done():
-		RecordTask("canceled", time.Since(enqueueTime).Seconds())
-		return nil, ctx.Err()
-	}
+	return &ExtractResp{
+		TaskID:     req.TaskID,
+		UUID:       req.UUID,
+		PcapPath:   req.PcapPath,
+		ScriptPath: resolveExtractScriptPath(req.ScriptPath),
+		OutputDir:  req.OutputDir,
+		StartTime:  res.startTime.Format(time.RFC3339),
+	}, nil
 }
 
 func (s *Service) SubmitExtractAsyncTask(ctx context.Context, req ExtractReq) (*Task, error) {
@@ -240,152 +192,8 @@ func (s *Service) SubmitExtractAsyncTask(ctx context.Context, req ExtractReq) (*
 	return task, nil
 }
 
-func (s *Service) runExtractAnalysis(parentCtx context.Context, req ExtractReq) ([]byte, error) {
-	cfg := s.getConfig()
-	taskType := "FILE_EXTRACT"
-	pcapName := filepath.Base(req.PcapPath)
-
-	// 优先使用请求中的脚本路径，否则使用默认路径
-	var scriptPath string
-	if req.ScriptPath != "" {
-		scriptPath = req.ScriptPath
-	} else {
-		// 使用默认的文件提取脚本路径
-		scriptPath = "/opt/zeek_runner/file_extract_script/extract_file.zeek"
-	}
-
-	// 确保路径格式正确
-	scriptPath = strings.Replace(scriptPath, "\\", "/", -1)
-	scriptName := filepath.Base(scriptPath)
-
-	LogTaskEvent("zeek_start", req.TaskID, req.UUID,
-		"type", taskType,
-		"pcap", pcapName,
-		"script", scriptName,
-		"timeout_min", cfg.Pool.TimeoutMinutes,
-	)
-
-	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", req.UUID))
-	if err != nil {
-		LogTaskError("temp_dir_failed", req.TaskID, req.UUID, err)
-		return nil, status.Errorf(codes.Internal, "create temp dir failed: %v", err)
-	}
-	defer os.RemoveAll(workDir)
-
-	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(cfg.Pool.TimeoutMinutes)*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, scriptPath)
-	cmd.Dir = workDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-
-	env := os.Environ()
-	envMap := map[string]string{
-		"TASK_ID":             req.TaskID,
-		"UUID":                req.UUID,
-		"PCAP_ID":             req.PcapID,
-		"PCAP_PATH":           req.PcapPath,
-		"EXTRACTED_FILE_PATH": req.ExtractedFilePath,
-		"MIN_FILE_SIZE_KB":    strconv.Itoa(req.ExtractedFileMinSize),
-		"MAX_FILE_SIZE_MB":    strconv.Itoa(req.ExtractedFileMaxSize),
-		"KAFKA_BROKERS":       cfg.Kafka.Brokers,
-	}
-	for k, v := range envMap {
-		if v != "" {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	cmd.Env = env
-
-	var errBuf bytes.Buffer
-	cmd.Stdout = io.Discard
-	cmd.Stderr = &LimitWriter{w: &errBuf, n: 8192}
-
-	startTime := time.Now()
-	err = cmd.Run()
-	output := errBuf.Bytes()
-	duration := time.Since(startTime)
-
-	if err != nil {
-		errMsg := "zeek_failed"
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			errMsg = "timeout"
-		} else if errors.Is(ctx.Err(), context.Canceled) {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			errMsg = "canceled"
-		}
-
-		LogTaskError(errMsg, req.TaskID, req.UUID, err,
-			"duration_ms", duration.Milliseconds(),
-			"stderr", string(output),
-		)
-		return output, err
-	}
-
-	LogTaskEvent("zeek_done", req.TaskID, req.UUID,
-		"duration_ms", duration.Milliseconds(),
-		"stderr", string(output),
-		"type", taskType,
-	)
-
-	if s.fileDedupMgr != nil && req.ExtractedFilePath != "" {
-		s.processExtractedFiles(ctx, req.ExtractedFilePath, req.PcapPath, req.TaskID)
-	}
-
-	return output, nil
-}
-
-func (s *Service) processExtractedFiles(ctx context.Context, extractDir string, pcapPath string, taskID string) {
-	entries, err := os.ReadDir(extractDir)
-	if err != nil {
-		LogTaskError("read_dir_failed", taskID, "", err, "dir", extractDir)
-		return
-	}
-
-	pcapBase := filepath.Base(pcapPath)
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		filename := entry.Name()
-
-		if filename == pcapBase {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(filename))
-		if ext == ".pcap" || ext == ".cap" || ext == ".pcapng" {
-			continue
-		}
-
-		filePath := filepath.Join(extractDir, entry.Name())
-		record, isDuplicate, err := s.fileDedupMgr.ProcessExtractedFile(ctx, filePath, pcapPath, taskID)
-		if err != nil {
-			LogTaskError("process_file_failed", taskID, "", err, "file", entry.Name())
-			continue
-		}
-
-		if isDuplicate {
-			LogTaskEvent("file_dedup", taskID, "",
-				"file", entry.Name(),
-				"hash", record.Hash[:16],
-				"action", "skipped",
-				"ref_count", record.RefCount,
-			)
-		} else {
-			LogTaskEvent("file_saved", taskID, "",
-				"file", entry.Name(),
-				"hash", record.Hash[:16],
-				"size", record.FileSize,
-			)
-		}
-	}
+func (s *Service) runExtractAnalysis(parentCtx context.Context, req ExtractReq) (zeekRunResult, error) {
+	return s.runOfflineTask(parentCtx, newOfflineExtractTask(req))
 }
 
 func validateExtractReq(req ExtractReq) error {
@@ -398,8 +206,8 @@ func validateExtractReq(req ExtractReq) error {
 	if req.PcapPath == "" {
 		return errors.New("missing pcapPath")
 	}
-	if req.ExtractedFilePath == "" {
-		return errors.New("missing extractedFilePath")
+	if req.OutputDir == "" {
+		return errors.New("missing outputDir")
 	}
 
 	if err := validatePath(req.PcapPath, "pcap"); err != nil {
@@ -409,11 +217,11 @@ func validateExtractReq(req ExtractReq) error {
 		return fmt.Errorf("file not found: %s", req.PcapPath)
 	}
 
-	if err := validatePath(req.ExtractedFilePath, "extracted file"); err != nil {
+	if err := validatePath(req.OutputDir, "output dir"); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(req.ExtractedFilePath) {
-		return errors.New("extracted file path must be absolute")
+	if !filepath.IsAbs(req.OutputDir) {
+		return errors.New("outputDir must be absolute")
 	}
 
 	// 验证脚本路径（如果提供）
@@ -452,27 +260,38 @@ func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, e
 	return task, nil
 }
 
-func (s *Service) executeAsyncTask(ctx context.Context, uuid string, req AnalyzeReq, timeout int) {
+func (s *Service) executeAsyncTask(ctx context.Context, uuid string, spec offlineTaskSpec, timeout int) {
 	taskCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Minute)
 	defer cancel()
 
-	output, err := s.runZeekAnalysis(taskCtx, req)
+	result, err := s.runOfflineTask(taskCtx, spec)
 
 	if err != nil {
 		if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
 			s.taskManager.SetTimeout(ctx, uuid)
+			s.publishParentEventIfReady(ctx, spec.taskID)
 			RecordTask("timeout", 0)
 		} else if errors.Is(taskCtx.Err(), context.Canceled) {
 			s.taskManager.SetFailed(ctx, uuid, "canceled")
+			s.publishParentEventIfReady(ctx, spec.taskID)
 			RecordTask("canceled", 0)
 		} else {
 			s.taskManager.SetFailed(ctx, uuid, err.Error())
+			s.publishParentEventIfReady(ctx, spec.taskID)
 			RecordTask("failed", 0)
 		}
 		return
 	}
 
-	s.taskManager.SetSuccess(ctx, uuid, string(output))
+	s.taskManager.SetSuccessWithStats(
+		ctx,
+		uuid,
+		string(result.output),
+		result.stats.NoticeCount+result.stats.IntelCount,
+		result.stats.NoticeCount,
+		result.stats.IntelCount,
+	)
+	s.publishParentEventIfReady(ctx, spec.taskID)
 	RecordTask("success", 0)
 }
 
@@ -485,12 +304,17 @@ func (s *Service) GetTaskStatus(ctx context.Context, uuid string) (*Task, error)
 
 type ParentTaskStatus struct {
 	TaskID       string
+	PcapID       string
+	PcapPath     string
 	TotalCount   int
 	PendingCount int
 	RunningCount int
 	SuccessCount int
 	FailedCount  int
 	TimeoutCount int
+	HitCount     int
+	NoticeCount  int
+	IntelCount   int
 	Status       string
 	SubTasks     []*Task
 }
@@ -519,6 +343,17 @@ func (s *Service) GetParentTaskStatus(ctx context.Context, taskID string) (*Pare
 	tasks, err := s.taskManager.GetTasksByParentID(ctx, taskID)
 	if err == nil {
 		status.SubTasks = tasks
+		for _, task := range tasks {
+			if status.PcapID == "" {
+				status.PcapID = task.PcapID
+			}
+			if status.PcapPath == "" {
+				status.PcapPath = task.PcapPath
+			}
+			status.HitCount += task.HitCount
+			status.NoticeCount += task.NoticeCount
+			status.IntelCount += task.IntelCount
+		}
 	}
 
 	return status, nil
@@ -572,21 +407,11 @@ func (s *Service) processQueuedTask(ctx context.Context, uuid string) {
 		return
 	}
 
-	req := AnalyzeReq{
-		TaskID:               task.TaskID,
-		UUID:                 task.UUID,
-		PcapID:               task.PcapID,
-		PcapPath:             task.PcapPath,
-		ScriptID:             task.ScriptID,
-		ScriptPath:           task.ScriptPath,
-		OnlyNotice:           task.OnlyNotice,
-		ExtractedFilePath:    task.ExtractedFilePath,
-		ExtractedFileMinSize: task.ExtractedFileMinSize,
-	}
+	spec := newOfflineTaskFromStored(task)
 
 	cfg := s.getConfig()
 	err = s.pool.Submit(func() {
-		s.executeAsyncTask(context.Background(), uuid, req, cfg.Pool.TimeoutMinutes)
+		s.executeAsyncTask(context.Background(), uuid, spec, cfg.Pool.TimeoutMinutes)
 	})
 
 	if err != nil {
@@ -616,60 +441,111 @@ func (s *Service) processQueuedTask(ctx context.Context, uuid string) {
 	RecordTask("started", 0)
 }
 
-func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]byte, error) {
-	cfg := s.getConfig()
-	taskType := deriveTaskType(req)
-	pcapName := filepath.Base(req.PcapPath)
-	scriptName := filepath.Base(req.ScriptPath)
+func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) (zeekRunResult, error) {
+	return s.runOfflineTask(parentCtx, newOfflineScanTask(req))
+}
 
-	LogTaskEvent("zeek_start", req.TaskID, req.UUID,
-		"type", taskType,
+func (s *Service) executeOfflineTaskInPool(ctx context.Context, spec offlineTaskSpec) (*taskExecutionResult, error) {
+	resultChan := make(chan taskExecutionResult, 1)
+	enqueueTime := time.Now()
+
+	cfg := s.getConfig()
+	err := s.pool.Submit(func() {
+		if ctx.Err() != nil {
+			return
+		}
+
+		actualStartTime := time.Now()
+		queueDuration := actualStartTime.Sub(enqueueTime)
+		if queueDuration > 500*time.Millisecond {
+			LogTaskEvent("queue_wait", spec.taskID, spec.uuid,
+				"wait_ms", queueDuration.Milliseconds(),
+				"pool_running", s.pool.Running(),
+			)
+		}
+
+		out, e := s.runOfflineTask(ctx, spec)
+		select {
+		case resultChan <- taskExecutionResult{
+			result:    out,
+			err:       e,
+			startTime: actualStartTime,
+		}:
+		case <-ctx.Done():
+		}
+	})
+
+	if err != nil {
+		if errors.Is(err, ants.ErrPoolOverload) {
+			RecordTask("rejected", 0)
+			return nil, status.Errorf(codes.ResourceExhausted, "task pool full (cap: %d)", cfg.Pool.Size)
+		}
+		RecordTask("error", 0)
+		return nil, status.Errorf(codes.Internal, "submit failed: %v", err)
+	}
+
+	select {
+	case res := <-resultChan:
+		duration := time.Since(enqueueTime).Seconds()
+		if res.err != nil {
+			RecordTask("failed", duration)
+			return nil, fmt.Errorf("%w | output: %s", res.err, string(res.result.output))
+		}
+		RecordTask("success", duration)
+		return &res, nil
+	case <-ctx.Done():
+		RecordTask("canceled", time.Since(enqueueTime).Seconds())
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Service) runOfflineTask(parentCtx context.Context, spec offlineTaskSpec) (zeekRunResult, error) {
+	return s.runZeekCommand(parentCtx, spec.zeekRunOptions(s))
+}
+func (s *Service) runZeekCommand(parentCtx context.Context, opts zeekRunOptions) (zeekRunResult, error) {
+	cfg := s.getConfig()
+	pcapName := filepath.Base(opts.pcapPath)
+	scriptName := filepath.Base(opts.scriptPath)
+
+	LogTaskEvent("zeek_start", opts.taskID, opts.uuid,
+		"type", opts.taskType,
 		"pcap", pcapName,
 		"script", scriptName,
 		"timeout_min", cfg.Pool.TimeoutMinutes,
 	)
 
-	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", req.UUID))
+	workDir, err := os.MkdirTemp("", fmt.Sprintf("zeek_run_%s_*", opts.uuid))
 	if err != nil {
-		LogTaskError("temp_dir_failed", req.TaskID, req.UUID, err)
-		return nil, status.Errorf(codes.Internal, "create temp dir failed: %v", err)
+		LogTaskError("temp_dir_failed", opts.taskID, opts.uuid, err)
+		return zeekRunResult{}, status.Errorf(codes.Internal, "create temp dir failed: %v", err)
 	}
 	defer os.RemoveAll(workDir)
 
 	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(cfg.Pool.TimeoutMinutes)*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "zeek", "-Cr", req.PcapPath, req.ScriptPath, "/usr/local/zeek/share/zeek/base/custom/config.zeek")
-	cmd.Dir = workDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-
-	env := os.Environ()
-	envMap := map[string]string{
-		"TASK_ID": req.TaskID, "UUID": req.UUID,
-		"ONLY_NOTICE":             strconv.FormatBool(req.OnlyNotice),
-		"PCAP_ID":                 req.PcapID,
-		"PCAP_PATH":               req.PcapPath,
-		"SCRIPT_ID":               req.ScriptID,
-		"SCRIPT_PATH":             req.ScriptPath,
-		"EXTRACTED_FILE_PATH":     req.ExtractedFilePath,
-		"EXTRACTED_FILE_MIN_SIZE": strconv.Itoa(req.ExtractedFileMinSize),
-		"KAFKA_BROKERS":           cfg.Kafka.Brokers,
-	}
-	for k, v := range envMap {
-		if v != "" {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
+	if opts.taskType == string(offlineTaskExtract) && opts.outputDir != "" {
+		if err := os.MkdirAll(opts.outputDir, 0o755); err != nil {
+			LogTaskError("create_output_dir_failed", opts.taskID, opts.uuid, err, "output_dir", opts.outputDir)
+			return zeekRunResult{}, status.Errorf(codes.Internal, "create output dir failed: %v", err)
 		}
 	}
-	cmd.Env = env
+
+	cmd := exec.CommandContext(ctx, "zeek", "-Cr", opts.pcapPath, opts.scriptPath, customConfigPath)
+	cmd.Dir = workDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	cmd.Env = appendCommandEnv(os.Environ(), opts.env)
 
 	var errBuf bytes.Buffer
-	cmd.Stdout = io.Discard
-	cmd.Stderr = &LimitWriter{w: &errBuf, n: 8192}
+	limitedOutput := &LimitWriter{w: &errBuf, n: maxCommandOutputBytes}
+	cmd.Stdout = limitedOutput
+	cmd.Stderr = limitedOutput
 
 	startTime := time.Now()
 	err = cmd.Run()
 	output := errBuf.Bytes()
 	duration := time.Since(startTime)
+	stats := collectZeekLogStats(workDir)
 
 	if err != nil {
 		errMsg := "zeek_failed"
@@ -685,31 +561,84 @@ func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) ([]
 			errMsg = "canceled"
 		}
 
-		LogTaskError(errMsg, req.TaskID, req.UUID, err,
+		LogTaskError(errMsg, opts.taskID, opts.uuid, err,
 			"duration_ms", duration.Milliseconds(),
 			"stderr", string(output),
 		)
-		return output, err
+		if opts.taskType == string(offlineTaskExtract) {
+			_ = s.publishExtractTaskEvent(parentCtx, opts, "task_failed", "failed", extractTaskSummary{}, err)
+		}
+		s.publishSubtaskEvent(parentCtx, opts, stats, duration, err)
+		return zeekRunResult{output: output, stats: stats}, err
 	}
 
-	LogTaskEvent("zeek_done", req.TaskID, req.UUID,
+	LogTaskEvent("zeek_done", opts.taskID, opts.uuid,
 		"duration_ms", duration.Milliseconds(),
 		"stderr", string(output),
-		"type", taskType,
+		"type", opts.taskType,
 	)
 
-	if taskType == "FILE_EXTRACT" && s.fileDedupMgr != nil && req.ExtractedFilePath != "" {
-		s.processExtractedFiles(ctx, req.ExtractedFilePath, req.PcapPath, req.TaskID)
+	if opts.taskType == string(offlineTaskExtract) {
+		summary, postErr := s.processExtractedFiles(ctx, opts)
+		if postErr != nil {
+			LogTaskError("extract_event_failed", opts.taskID, opts.uuid, postErr,
+				"output_dir", opts.outputDir,
+			)
+			_ = s.publishExtractTaskEvent(parentCtx, opts, "task_failed", "failed", summary, postErr)
+			return zeekRunResult{output: output, stats: stats}, postErr
+		}
+		if err := s.publishExtractTaskEvent(parentCtx, opts, "task_completed", "success", summary, nil); err != nil {
+			LogTaskError("extract_task_event_failed", opts.taskID, opts.uuid, err,
+				"output_dir", opts.outputDir,
+			)
+			return zeekRunResult{output: output, stats: stats}, err
+		}
+	} else if opts.afterRun != nil {
+		opts.afterRun(ctx)
 	}
 
-	return output, nil
+	if opts.taskType == string(offlineTaskScan) {
+		if err := s.publishSubtaskHitEvents(parentCtx, opts, workDir); err != nil {
+			LogTaskError("subtask_hit_publish_failed", opts.taskID, opts.uuid, err)
+			return zeekRunResult{output: output, stats: stats}, err
+		}
+	}
+
+	s.publishSubtaskEvent(parentCtx, opts, stats, duration, nil)
+	logIntelArtifact(workDir, opts.taskID, opts.uuid)
+	return zeekRunResult{output: output, stats: stats}, nil
 }
 
-func deriveTaskType(req AnalyzeReq) string {
-	if req.ExtractedFilePath != "" || strings.Contains(req.ScriptPath, "extract") {
-		return "FILE_EXTRACT"
+func appendCommandEnv(base []string, envMap map[string]string) []string {
+	env := append([]string{}, base...)
+	for k, v := range envMap {
+		if v != "" {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
 	}
-	return "MALICIOUS_SCAN"
+	return env
+}
+
+func resolveExtractScriptPath(scriptPath string) string {
+	if scriptPath == "" {
+		scriptPath = defaultExtractScriptPath
+	}
+
+	return strings.ReplaceAll(scriptPath, "\\", "/")
+}
+
+func logIntelArtifact(workDir string, taskID string, uuid string) {
+	intelLogPath := filepath.Join(workDir, "intel.log")
+	if _, err := os.Stat(intelLogPath); err != nil {
+		return
+	}
+
+	intelLogContent, err := os.ReadFile(intelLogPath)
+	if err != nil || len(intelLogContent) == 0 {
+		return
+	}
+
+	LogTaskEvent("intel_log_generated", taskID, uuid, "content", string(intelLogContent))
 }
 
 func validateReq(req AnalyzeReq) error {
@@ -719,7 +648,7 @@ func validateReq(req AnalyzeReq) error {
 	if req.PcapID == "" {
 		return errors.New("missing pcapID")
 	}
-	if req.ExtractedFilePath == "" && req.ScriptID == "" {
+	if req.ScriptID == "" {
 		return errors.New("missing scriptID (required for malicious scan)")
 	}
 	if req.PcapPath == "" || req.ScriptPath == "" {
@@ -740,25 +669,20 @@ func validateReq(req AnalyzeReq) error {
 		return fmt.Errorf("script not found: %s", req.ScriptPath)
 	}
 
-	if req.ExtractedFilePath != "" {
-		if err := validatePath(req.ExtractedFilePath, "extracted file"); err != nil {
-			return err
-		}
-		if !filepath.IsAbs(req.ExtractedFilePath) {
-			return errors.New("extracted file path must be absolute")
-		}
-	}
-
 	return nil
 }
 
 func validatePath(path, name string) error {
-	cleanPath := filepath.Clean(path)
-	if strings.Contains(cleanPath, "..") {
-		return fmt.Errorf("invalid %s path: path traversal detected", name)
+	normalizedPath := filepath.ToSlash(path)
+	for _, segment := range strings.Split(normalizedPath, "/") {
+		if segment == ".." {
+			return fmt.Errorf("invalid %s path: path traversal detected", name)
+		}
 	}
-	isAbs := filepath.IsAbs(cleanPath)
-	if !isAbs && !strings.HasPrefix(cleanPath, "/") {
+
+	cleanPath := filepath.Clean(path)
+	isAbs := filepath.IsAbs(cleanPath) || strings.HasPrefix(normalizedPath, "/")
+	if !isAbs {
 		return fmt.Errorf("%s path must be absolute", name)
 	}
 	return nil

@@ -19,6 +19,8 @@ type FileRecord struct {
 	Hash      string    `json:"hash"`
 	FilePath  string    `json:"filePath"`
 	FileName  string    `json:"fileName"`
+	FUID      string    `json:"fuid"`
+	OriginalFileName string `json:"originalFileName"`
 	FileSize  int64     `json:"fileSize"`
 	MimeType  string    `json:"mimeType"`
 	FirstSeen time.Time `json:"firstSeen"`
@@ -195,14 +197,16 @@ func (fdm *FileDedupManager) ProcessExtractedFile(ctx context.Context, filePath,
 	}
 
 	record := &FileRecord{
-		Hash:      hash,
-		FilePath:  filePath,
-		FileName:  filepath.Base(filePath),
-		FileSize:  fileInfo.Size(),
-		FirstSeen: time.Now(),
-		RefCount:  1,
-		SourceURL: sourceURL,
-		TaskID:    taskID,
+		Hash:             hash,
+		FilePath:         filePath,
+		FileName:         filepath.Base(filePath),
+		FUID:             extractFUID(filepath.Base(filePath)),
+		OriginalFileName: extractOriginalFileName(filepath.Base(filePath)),
+		FileSize:         fileInfo.Size(),
+		FirstSeen:        time.Now(),
+		RefCount:         1,
+		SourceURL:        sourceURL,
+		TaskID:           taskID,
 	}
 
 	if err := fdm.RegisterFileInTask(ctx, record); err != nil {

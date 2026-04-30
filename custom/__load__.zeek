@@ -1,1 +1,1 @@
-@load ./config
+@load ./profiles/offline

@@ -79,7 +79,8 @@ RUN \
         librdkafka++1 \
         openssl \
         libzmq5 \
-        tzdata && \
+        tzdata \
+        git && \
     ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/* /tmp/* /var/tmp/*
@@ -88,8 +89,14 @@ COPY --from=zeek-builder /usr/local/zeek /usr/local/zeek
 COPY --from=go-builder /app/zeek_runner /app/
 
 RUN mkdir -p /usr/local/zeek/share/zeek/base/custom
-COPY ./custom/config.zeek /usr/local/zeek/share/zeek/base/custom/
-COPY ./custom/__load__.zeek /usr/local/zeek/share/zeek/base/custom/
+COPY ./custom/ /usr/local/zeek/share/zeek/base/custom/
+
+# Zeek-Intelligence-Feeds
+RUN cd /usr/local/zeek/share/zeek/site && \
+    git clone https://github.com/CriticalPathSecurity/Zeek-Intelligence-Feeds.git && \
+    sed -i "/abuse-ja3-fingerprints\\.intel/d" /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds/main.zeek && \
+    sed -i "/salesforce-ja3-fingerprints\\.intel/d" /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds/main.zeek && \
+    sed -i "s|lockbit\\.intel|lockbit_ip.intel|g" /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds/main.zeek
 
 RUN echo "@load base/custom" >> /usr/local/zeek/share/zeek/base/init-default.zeek
 

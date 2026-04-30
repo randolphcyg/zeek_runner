@@ -30,7 +30,7 @@ type Task struct {
 	ScriptID             string     `json:"scriptID"`
 	ScriptPath           string     `json:"scriptPath"`
 	OnlyNotice           bool       `json:"onlyNotice"`
-	ExtractedFilePath    string     `json:"extractedFilePath"`
+	OutputDir            string     `json:"outputDir"`
 	ExtractedFileMinSize int        `json:"extractedFileMinSize"`
 	ExtractedFileMaxSize int        `json:"extractedFileMaxSize"`
 	Status               TaskStatus `json:"status"`
@@ -38,6 +38,9 @@ type Task struct {
 	StartTime            time.Time  `json:"startTime"`
 	EndTime              time.Time  `json:"endTime"`
 	Duration             float64    `json:"duration"`
+	HitCount             int        `json:"hitCount"`
+	NoticeCount          int        `json:"noticeCount"`
+	IntelCount           int        `json:"intelCount"`
 	Error                string     `json:"error"`
 	Output               string     `json:"output"`
 	Retries              int        `json:"retries"`
@@ -142,21 +145,7 @@ func (tm *TaskManager) parentKey(taskID string) string {
 }
 
 func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, error) {
-	task := &Task{
-		TaskID:               req.TaskID,
-		UUID:                 req.UUID,
-		PcapID:               req.PcapID,
-		PcapPath:             req.PcapPath,
-		ScriptID:             req.ScriptID,
-		ScriptPath:           req.ScriptPath,
-		OnlyNotice:           req.OnlyNotice,
-		ExtractedFilePath:    "",
-		ExtractedFileMinSize: 0,
-		ExtractedFileMaxSize: 0,
-		Status:               TaskStatusPending,
-		CreateTime:           time.Now(),
-		MaxRetries:           3,
-	}
+	task := newOfflineScanTask(req).newTaskRecord()
 
 	if err := tm.saveTask(ctx, task); err != nil {
 		return nil, err
@@ -170,21 +159,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, e
 
 // CreateExtractTask 创建文件提取任务
 func (tm *TaskManager) CreateExtractTask(ctx context.Context, req ExtractReq) (*Task, error) {
-	task := &Task{
-		TaskID:               req.TaskID,
-		UUID:                 req.UUID,
-		PcapID:               req.PcapID,
-		PcapPath:             req.PcapPath,
-		ScriptID:             "EXTRACT_TASK",
-		ScriptPath:           req.ScriptPath,
-		OnlyNotice:           false,
-		ExtractedFilePath:    req.ExtractedFilePath,
-		ExtractedFileMinSize: req.ExtractedFileMinSize,
-		ExtractedFileMaxSize: req.ExtractedFileMaxSize,
-		Status:               TaskStatusPending,
-		CreateTime:           time.Now(),
-		MaxRetries:           3,
-	}
+	task := newOfflineExtractTask(req).newTaskRecord()
 
 	if err := tm.saveTask(ctx, task); err != nil {
 		return nil, err
@@ -274,6 +249,15 @@ func (tm *TaskManager) GetParentTaskStatusFromRedis(ctx context.Context, taskID 
 	return &status, nil
 }
 
+func (tm *TaskManager) MarkParentEventPublished(ctx context.Context, taskID string) (bool, error) {
+	if tm == nil || tm.redis == nil {
+		return false, nil
+	}
+
+	key := tm.parentKey(taskID) + ":analysis_event_published"
+	return tm.redis.SetNX(ctx, key, tm.instanceID, tm.expiration).Result()
+}
+
 func (tm *TaskManager) UpdateStatus(ctx context.Context, uuid string, status TaskStatus) error {
 	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
@@ -309,6 +293,10 @@ func (tm *TaskManager) SetRunning(ctx context.Context, uuid string) error {
 }
 
 func (tm *TaskManager) SetSuccess(ctx context.Context, uuid string, output string) error {
+	return tm.SetSuccessWithStats(ctx, uuid, output, 0, 0, 0)
+}
+
+func (tm *TaskManager) SetSuccessWithStats(ctx context.Context, uuid string, output string, hitCount, noticeCount, intelCount int) error {
 	task, err := tm.GetTask(ctx, uuid)
 	if err != nil {
 		return err
@@ -321,6 +309,9 @@ func (tm *TaskManager) SetSuccess(ctx context.Context, uuid string, output strin
 		task.Duration = task.EndTime.Sub(task.StartTime).Seconds()
 	}
 	task.Output = output
+	task.HitCount = hitCount
+	task.NoticeCount = noticeCount
+	task.IntelCount = intelCount
 
 	if err := tm.saveTask(ctx, task); err != nil {
 		return err

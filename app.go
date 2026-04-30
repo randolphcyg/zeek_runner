@@ -128,6 +128,10 @@ func (a *App) Shutdown(ctx context.Context) error {
 		a.FileDedupMgr.Close()
 	}
 
+	if a.Service != nil {
+		_ = a.Service.Close()
+	}
+
 	slog.Info("Bye")
 	return nil
 }

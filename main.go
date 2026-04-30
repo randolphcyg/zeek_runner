@@ -41,7 +41,7 @@ func main() {
 	ctx = ContextWithInstance(ctx, instanceID)
 	app.Start(ctx)
 
-	service := NewService(app.TaskPool, app.ConfigManager, app.TaskManager, app.FileDedupMgr)
+	service := app.Service
 	httpHandler := NewHTTPHandler(service, app)
 	grpcServer := NewGRPCServer(service, app)
 

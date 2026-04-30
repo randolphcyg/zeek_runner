@@ -1069,7 +1069,7 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "extractedFilePath": "/path/for/save/extracted/files",
+    "outputDir": "/path/for/save/extracted/files",
     "extractedFileMinSize": 20,
     "extractedFileMaxSize": 200,
     "pcapPath": "/data/zeek_runner/file_extract_script/xxx.pcap",
@@ -1085,7 +1085,7 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "extractedFilePath": "/path/for/save/extracted/files",
+    "outputDir": "/path/for/save/extracted/files",
     "extractedFileMinSize": 20,
     "extractedFileMaxSize": 200,
     "pcapPath": "/data/zeek_runner/file_extract_script/xxx.pcap",

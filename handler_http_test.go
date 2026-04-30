@@ -140,6 +140,35 @@ func TestValidatePath_Relative(t *testing.T) {
 	}
 }
 
+func TestValidateExtractReq_OutputDir(t *testing.T) {
+	req := ExtractReq{
+		TaskID:    "test-001",
+		UUID:      "test-uuid",
+		PcapID:    "pcap-001",
+		PcapPath:  "/tmp/test.pcap",
+		OutputDir: "/tmp/extracted",
+	}
+
+	err := validateExtractReq(req)
+	if err == nil || err.Error() != "file not found: /tmp/test.pcap" {
+		t.Fatalf("expected validation to pass outputDir alias before pcap existence check, got %v", err)
+	}
+}
+
+func TestValidateExtractReq_MissingOutputDir(t *testing.T) {
+	req := ExtractReq{
+		TaskID:   "test-001",
+		UUID:     "test-uuid",
+		PcapID:   "pcap-001",
+		PcapPath: "/tmp/test.pcap",
+	}
+
+	err := validateExtractReq(req)
+	if err == nil || err.Error() != "missing outputDir" {
+		t.Fatalf("expected missing outputDir error, got %v", err)
+	}
+}
+
 func TestHTTPHandler_HandleExtract_InvalidParams(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
