@@ -6,9 +6,9 @@ module CustomExtraction;
 # 从环境变量读取配置，提供默认值保底
 global extract_dir = getenv("EXTRACTED_FILE_PATH") == "" ? "./extract_files" : getenv("EXTRACTED_FILE_PATH");
 
-# 默认值: 1KB最小, 200MB最大
-global min_file_size = 1024;
-global max_file_size = 209715200;
+# 默认值: 1KB最小, 200MB最大；Go 任务可通过环境变量覆盖
+global min_file_size = to_count(getenv("MIN_FILE_SIZE_KB") == "" ? "1" : getenv("MIN_FILE_SIZE_KB")) * 1024;
+global max_file_size = to_count(getenv("MAX_FILE_SIZE_MB") == "" ? "200" : getenv("MAX_FILE_SIZE_MB")) * 1024 * 1024;
 
 # 设置 Zeek 原生提取的输出目录
 redef FileExtract::prefix = extract_dir;
@@ -154,7 +154,6 @@ event file_sniff(f: fa_file, meta: fa_metadata) {
     # 执行提取逻辑
     if ( should_extract ) {
         Files::add_analyzer(f, Files::ANALYZER_EXTRACT);
-        print fmt("[+] Trigger Extraction: %s (Reason: %s, Protocol: %s)", f$id, reason, f$source);
     }
 }
 
@@ -174,7 +173,6 @@ event file_state_remove(f: fa_file) {
             # 标记为 discard，交由上层 Go 服务异步删除
             local small_discard_path = fmt("%s.discard", orig_path);
             rename(orig_path, small_discard_path);
-            print fmt("[-] Discarded (Too Small): %s -> %s", f$total_bytes, small_discard_path);
             return;
         }
         
@@ -183,7 +181,6 @@ event file_state_remove(f: fa_file) {
             # 标记为 discard，交由上层 Go 服务异步删除
             local large_discard_path = fmt("%s.too_large", orig_path);
             rename(orig_path, large_discard_path);
-            print fmt("[-] Discarded (Too Large): %s -> %s", f$total_bytes, large_discard_path);
             return;
         }
     }
@@ -196,12 +193,5 @@ event file_state_remove(f: fa_file) {
     # 重命名文件
     if ( rename(orig_path, final_path) ) {
         f$info$extracted = final_path; # 更新 Zeek 日志中的路径记录
-        
-        local log_msg = fmt("[*] Extraction Success: %s", final_path);
-        if ( f$info?$mime_type ) log_msg += fmt(" | Type: %s", f$info$mime_type);
-        if ( f?$total_bytes ) log_msg += fmt(" | Size: %d Bytes", f$total_bytes);
-        print log_msg;
-    } else {
-        print fmt("[!] Rename Failed: %s", orig_path);
     }
 }

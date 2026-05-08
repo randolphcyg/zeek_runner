@@ -6,6 +6,7 @@ const SCRIPT_ID = "DETECT_HTTP_UA_v1";
 # 行为类型：恶意User-Agent检测
 # 行为分类：Web攻击/扫描探测
 # 行为描述：检测HTTP请求头中使用已知黑客工具(Sqlmap, Nmap等)的User-Agent，采用抗截断流式检测
+# 攻击特征：User-Agent包含sqlmap、nmap、masscan、curl、wget等扫描器、自动化工具或攻击框架标识
 
 @load base/protocols/http
 @load base/frameworks/notice

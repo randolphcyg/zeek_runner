@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -35,7 +36,7 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 		if strings.Contains(err.Error(), "pool full") {
 			return nil, status.Error(codes.ResourceExhausted, err.Error())
 		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, grpcStatusFromError(err)
 	}
 
 	return &pb.AnalyzeResponse{
@@ -123,7 +124,16 @@ func (s *GRPCServer) VersionCheck(ctx context.Context, req *pb.VersionCheckReque
 }
 
 func (s *GRPCServer) ZeekSyntaxCheck(ctx context.Context, req *pb.ZeekSyntaxCheckRequest) (*pb.ZeekSyntaxCheckResponse, error) {
-	result, err := doSyntaxCheck(req.GetScriptPath(), req.GetScriptContent())
+	scriptPath := req.GetScriptPath()
+	if req.GetScriptContent() == "" && req.GetScriptID() != "" {
+		script, err := s.service.ResolveManagedScript(req.GetScriptID(), "")
+		if err != nil {
+			return nil, grpcStatusFromError(err)
+		}
+		scriptPath = script.ScriptPath
+	}
+
+	result, err := doSyntaxCheck(scriptPath, req.GetScriptContent())
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -152,7 +162,7 @@ func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeReque
 		if strings.Contains(err.Error(), "Redis required") {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, grpcStatusFromError(err)
 	}
 
 	return &pb.AsyncAnalyzeResponse{
@@ -252,6 +262,77 @@ func (s *GRPCServer) GetParentTaskStatus(ctx context.Context, req *pb.ParentTask
 		Status:       parentStatus.Status,
 		SubTasks:     subTasks,
 	}, nil
+}
+
+func (s *GRPCServer) ListScripts(ctx context.Context, req *pb.ListScriptsRequest) (*pb.ListScriptsResponse, error) {
+	scripts := s.service.ListScripts(ListScriptsRequest{
+		Name:        req.GetName(),
+		EnabledOnly: req.GetEnabledOnly(),
+	})
+	resp := &pb.ListScriptsResponse{Scripts: make([]*pb.ScriptInfo, len(scripts))}
+	for i, script := range scripts {
+		resp.Scripts[i] = scriptInfoToPB(script)
+	}
+	return resp, nil
+}
+
+func (s *GRPCServer) GetScript(ctx context.Context, req *pb.GetScriptRequest) (*pb.ScriptInfo, error) {
+	script, err := s.service.GetScript(req.GetScriptID())
+	if err != nil {
+		return nil, grpcStatusFromError(err)
+	}
+	return scriptInfoToPB(script), nil
+}
+
+func (s *GRPCServer) ReloadScripts(ctx context.Context, req *pb.ReloadScriptsRequest) (*pb.ReloadScriptsResponse, error) {
+	reload, err := s.service.ReloadScripts()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	resp := &pb.ReloadScriptsResponse{
+		Total:   int32(reload.Total),
+		Valid:   int32(reload.Valid),
+		Invalid: int32(reload.Invalid),
+		Scripts: make([]*pb.ScriptInfo, len(reload.Scripts)),
+	}
+	for i, script := range reload.Scripts {
+		resp.Scripts[i] = scriptInfoToPB(script)
+	}
+	return resp, nil
+}
+
+func scriptInfoToPB(script ScriptInfo) *pb.ScriptInfo {
+	return &pb.ScriptInfo{
+		ScriptID:         script.ScriptID,
+		ScriptName:       script.ScriptName,
+		ScriptPath:       script.ScriptPath,
+		ExpCodeType:      script.ExpCodeType,
+		Size:             script.Size,
+		BehaviorType:     script.BehaviorType,
+		BehaviorCategory: script.BehaviorCategory,
+		Description:      script.Description,
+		AttackFeature:    script.AttackFeature,
+		Checksum:         script.Checksum,
+		UpdatedAt:        script.UpdatedAt,
+		Enabled:          script.Enabled,
+		Valid:            script.Valid,
+		Error:            script.Error,
+	}
+}
+
+func grpcStatusFromError(err error) error {
+	switch {
+	case errors.Is(err, ErrScriptNotFound):
+		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, ErrScriptInvalid),
+		strings.Contains(err.Error(), "scriptPath mismatch"),
+		strings.Contains(err.Error(), "required"),
+		strings.Contains(err.Error(), "missing"),
+		strings.Contains(err.Error(), "invalid"):
+		return status.Error(codes.InvalidArgument, err.Error())
+	default:
+		return status.Error(codes.Internal, err.Error())
+	}
 }
 
 func analyzeReqFromGRPC(req *pb.AnalyzeRequest) AnalyzeReq {

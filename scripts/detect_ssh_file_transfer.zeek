@@ -6,6 +6,7 @@ const SCRIPT_ID = "DETECT_SSH_FILE_TRANSFER_v1";
 # 行为类型：SSH异常大文件传输(SCP/SFTP)
 # 行为分类：数据泄露/流量异常
 # 行为描述：检测已认证SSH连接中的异常单向大数据流，识别疑似数据窃取行为
+# 攻击特征：已认证SSH会话中出现超过阈值的单向大流量传输，疑似SCP/SFTP数据外传
 
 @load base/frameworks/notice
 @load base/protocols/ssh
@@ -14,19 +15,24 @@ module SSH_SCP;
 
 export {
     redef enum Notice::Type += { Suspicious_SCP_Transfer };
-    # 【阈值配置】生产环境建议 50MB (50*1024*1024)
-    const TRANSFER_THRESHOLD: count = 10 * 1024;
+    const TRANSFER_THRESHOLD: count = 1024 * 1024 &redef;
 }
 
 global auth_ssh_conns: set[string];
+
+function is_ssh_connection(c: connection): bool {
+    if ( c$id$resp_p == 22/tcp ) return T;
+    if ( c?$service && "ssh" in c$service ) return T;
+    return F;
+}
 
 event ssh_auth_successful(c: connection, auth_method_none: bool) {
     add auth_ssh_conns[c$uid];
 }
 
 event connection_state_remove(c: connection) {
-    if ( c$uid !in auth_ssh_conns ) return;
-    delete auth_ssh_conns[c$uid];
+    if ( c$uid !in auth_ssh_conns && ! is_ssh_connection(c) ) return;
+    if ( c$uid in auth_ssh_conns ) delete auth_ssh_conns[c$uid];
 
     local bytes_orig = c$orig$size;
     local bytes_resp = c$resp$size;

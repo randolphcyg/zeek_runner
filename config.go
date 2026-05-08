@@ -69,10 +69,15 @@ type OTelConfig struct {
 }
 
 type ZeekConfig struct {
-	BaseWaitTimeMs int    `yaml:"baseWaitTimeMs"`
-	ExtractPath    string `yaml:"extractPath"`
-	MinSizeKB      int    `yaml:"minSizeKB"`
-	MaxSizeMB      int    `yaml:"maxSizeMB"`
+	BaseWaitTimeMs       int    `yaml:"baseWaitTimeMs"`
+	ExtractPath          string `yaml:"extractPath"`
+	MinSizeKB            int    `yaml:"minSizeKB"`
+	MaxSizeMB            int    `yaml:"maxSizeMB"`
+	ScriptRoot           string `yaml:"scriptRoot"`
+	AutoReloadScripts    bool   `yaml:"autoReloadScripts"`
+	AutoReloadScriptsSet bool   `yaml:"-"`
+	ScriptReloadDebounce string `yaml:"scriptReloadDebounce"`
+	ScriptReloadInterval string `yaml:"scriptReloadInterval"`
 }
 
 type Config struct {
@@ -186,10 +191,14 @@ func loadConfig() *Config {
 			Endpoint: getEnvString("OTEL_ENDPOINT", ""),
 		},
 		Zeek: ZeekConfig{
-			BaseWaitTimeMs: getEnvInt("ZEEK_BASE_WAIT_TIME_MS", 10000),
-			ExtractPath:    getEnvString("ZEEK_EXTRACT_PATH", "/opt/zeek_runner/extracted"),
-			MinSizeKB:      getEnvInt("ZEEK_MIN_SIZE_KB", 20),
-			MaxSizeMB:      getEnvInt("ZEEK_MAX_SIZE_MB", 200),
+			BaseWaitTimeMs:       getEnvInt("ZEEK_BASE_WAIT_TIME_MS", 10000),
+			ExtractPath:          getEnvString("ZEEK_EXTRACT_PATH", "/opt/zeek_runner/extracted"),
+			MinSizeKB:            getEnvInt("ZEEK_MIN_SIZE_KB", 20),
+			MaxSizeMB:            getEnvInt("ZEEK_MAX_SIZE_MB", 200),
+			ScriptRoot:           getEnvString("ZEEK_SCRIPT_ROOT", "/opt/zeek_runner/scripts"),
+			AutoReloadScripts:    getEnvBool("ZEEK_AUTO_RELOAD_SCRIPTS", true),
+			ScriptReloadDebounce: getEnvString("ZEEK_SCRIPT_RELOAD_DEBOUNCE", "2s"),
+			ScriptReloadInterval: getEnvString("ZEEK_SCRIPT_RELOAD_INTERVAL", "60s"),
 		},
 	}
 

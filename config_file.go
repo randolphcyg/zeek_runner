@@ -29,6 +29,10 @@ func LoadConfigFile(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err == nil {
+		cfg.Zeek.AutoReloadScriptsSet = yamlHasPath(&node, "zeek", "autoReloadScripts")
+	}
 
 	slog.Info("config file loaded", "path", absPath)
 	return &cfg, nil
@@ -169,8 +173,50 @@ func MergeConfigWithEnv(fileCfg *Config, envCfg *Config) *Config {
 	if fileCfg.Zeek.MinSizeKB > 0 && os.Getenv("ZEEK_MIN_SIZE_KB") == "" {
 		result.Zeek.MinSizeKB = fileCfg.Zeek.MinSizeKB
 	}
+	if fileCfg.Zeek.MaxSizeMB > 0 && os.Getenv("ZEEK_MAX_SIZE_MB") == "" {
+		result.Zeek.MaxSizeMB = fileCfg.Zeek.MaxSizeMB
+	}
+	if fileCfg.Zeek.ScriptRoot != "" && os.Getenv("ZEEK_SCRIPT_ROOT") == "" {
+		result.Zeek.ScriptRoot = fileCfg.Zeek.ScriptRoot
+	}
+	if fileCfg.Zeek.AutoReloadScriptsSet && os.Getenv("ZEEK_AUTO_RELOAD_SCRIPTS") == "" {
+		result.Zeek.AutoReloadScripts = fileCfg.Zeek.AutoReloadScripts
+	}
+	if fileCfg.Zeek.ScriptReloadDebounce != "" && os.Getenv("ZEEK_SCRIPT_RELOAD_DEBOUNCE") == "" {
+		result.Zeek.ScriptReloadDebounce = fileCfg.Zeek.ScriptReloadDebounce
+	}
+	if fileCfg.Zeek.ScriptReloadInterval != "" && os.Getenv("ZEEK_SCRIPT_RELOAD_INTERVAL") == "" {
+		result.Zeek.ScriptReloadInterval = fileCfg.Zeek.ScriptReloadInterval
+	}
 
 	return &result
+}
+
+func yamlHasPath(node *yaml.Node, path ...string) bool {
+	if node == nil {
+		return false
+	}
+	current := node
+	if current.Kind == yaml.DocumentNode && len(current.Content) > 0 {
+		current = current.Content[0]
+	}
+	for _, key := range path {
+		if current.Kind != yaml.MappingNode {
+			return false
+		}
+		found := false
+		for i := 0; i+1 < len(current.Content); i += 2 {
+			if current.Content[i].Value == key {
+				current = current.Content[i+1]
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func GetConfigPath() string {
@@ -213,6 +259,26 @@ func ValidateConfig(cfg *Config) error {
 			return fmt.Errorf("redis db must be non-negative, got %d", cfg.Redis.DB)
 		}
 	}
+	if cfg.Zeek.ScriptRoot == "" {
+		return fmt.Errorf("zeek scriptRoot must not be empty")
+	}
+	if _, err := parsePositiveDuration(cfg.Zeek.ScriptReloadDebounce, "zeek scriptReloadDebounce"); err != nil {
+		return err
+	}
+	if _, err := parsePositiveDuration(cfg.Zeek.ScriptReloadInterval, "zeek scriptReloadInterval"); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func parsePositiveDuration(value, name string) (time.Duration, error) {
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a duration: %w", name, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%s must be positive, got %s", name, value)
+	}
+	return d, nil
 }

@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	pb "zeek_runner/api/pb"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestGRPCServer_VersionCheck_InvalidComponent(t *testing.T) {
@@ -43,6 +46,55 @@ func TestGRPCServer_ZeekSyntaxCheck_EmptyContent(t *testing.T) {
 
 	if err == nil {
 		t.Error("expected error for empty script content")
+	}
+}
+
+func TestGRPCServer_ListGetReloadScripts(t *testing.T) {
+	root := t.TempDir()
+	writeTestScript(t, root, "script.zeek", `const SCRIPT_ID = "SCRIPT";`)
+	registry, err := newScriptRegistry(root)
+	if err != nil {
+		t.Fatalf("newScriptRegistry failed: %v", err)
+	}
+	cm := &ConfigManager{}
+	cm.config.Store(&Config{Zeek: ZeekConfig{ScriptRoot: root}})
+	server := NewGRPCServer(&Service{scriptRegistry: registry, configManager: cm}, nil)
+
+	list, err := server.ListScripts(context.Background(), &pb.ListScriptsRequest{EnabledOnly: true})
+	if err != nil {
+		t.Fatalf("ListScripts failed: %v", err)
+	}
+	if len(list.GetScripts()) != 1 || list.GetScripts()[0].GetScriptID() != "SCRIPT" {
+		t.Fatalf("unexpected scripts: %+v", list.GetScripts())
+	}
+
+	script, err := server.GetScript(context.Background(), &pb.GetScriptRequest{ScriptID: "SCRIPT"})
+	if err != nil {
+		t.Fatalf("GetScript failed: %v", err)
+	}
+	if script.GetExpCodeType() != "zeek" {
+		t.Fatalf("unexpected script info: %+v", script)
+	}
+
+	reload, err := server.ReloadScripts(context.Background(), &pb.ReloadScriptsRequest{})
+	if err != nil {
+		t.Fatalf("ReloadScripts failed: %v", err)
+	}
+	if reload.GetTotal() != 1 || reload.GetValid() != 1 || reload.GetInvalid() != 0 {
+		t.Fatalf("unexpected reload response: %+v", reload)
+	}
+}
+
+func TestGRPCServer_GetScript_NotFound(t *testing.T) {
+	registry, err := newScriptRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("newScriptRegistry failed: %v", err)
+	}
+	server := NewGRPCServer(&Service{scriptRegistry: registry}, nil)
+
+	_, err = server.GetScript(context.Background(), &pb.GetScriptRequest{ScriptID: "NOPE"})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("expected NotFound, got %v", err)
 	}
 }
 

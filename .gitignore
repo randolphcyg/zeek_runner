@@ -1,0 +1,15 @@
+*.tar.gz
+.idea
+.vscode
+.DS_Store
+*.log
+*.pcapng
+*.pcap
+pcaps/
+deploy.sh
+zeek_runner
+config.local.yaml
+otel-config.yaml
+docker-compose.local.yaml
+docker-compose.local.yml
+docker-compose.dev.yml

@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +30,7 @@ type zeekLogStats struct {
 }
 
 type analysisSubtaskHitEvent struct {
+	EventID      string `json:"eventID"`
 	EventType    string `json:"eventType"`
 	EventVersion string `json:"eventVersion"`
 	EventTime    string `json:"eventTime"`
@@ -53,6 +56,7 @@ type analysisSubtaskHitEvent struct {
 }
 
 type analysisSubtaskEvent struct {
+	EventID      string `json:"eventID"`
 	EventType    string `json:"eventType"`
 	EventVersion string `json:"eventVersion"`
 	EventTime    string `json:"eventTime"`
@@ -74,14 +78,18 @@ type analysisSubtaskEvent struct {
 }
 
 type analysisParentEvent struct {
+	EventID      string `json:"eventID"`
 	EventType    string `json:"eventType"`
 	EventVersion string `json:"eventVersion"`
 	EventTime    string `json:"eventTime"`
 	Producer     string `json:"producer"`
 	AnalysisMode string `json:"analysisMode"`
 	TaskID       string `json:"taskID"`
+	UUID         string `json:"uuid"`
 	PcapID       string `json:"pcapID"`
 	PcapPath     string `json:"pcapPath"`
+	ScriptID     string `json:"scriptID"`
+	ScriptPath   string `json:"scriptPath"`
 	Status       string `json:"status"`
 	Verdict      string `json:"verdict"`
 	TotalCount   int    `json:"totalCount"`
@@ -94,9 +102,10 @@ type analysisParentEvent struct {
 }
 
 type analysisEventPublisher struct {
-	writer  *kafka.Writer
-	brokers string
-	topic   string
+	writer    *kafka.Writer
+	brokers   string
+	topic     string
+	publishFn func(context.Context, string, string, any) error
 }
 
 func newAnalysisEventPublisher(brokers string) *analysisEventPublisher {
@@ -120,7 +129,13 @@ func (p *analysisEventPublisher) Close() error {
 }
 
 func (p *analysisEventPublisher) Publish(ctx context.Context, key string, eventType string, payload any) error {
-	if p == nil || p.writer == nil {
+	if p == nil {
+		return nil
+	}
+	if p.publishFn != nil {
+		return p.publishFn(ctx, key, eventType, payload)
+	}
+	if p.writer == nil {
 		return nil
 	}
 
@@ -139,6 +154,15 @@ func (p *analysisEventPublisher) Publish(ctx context.Context, key string, eventT
 			{Key: "producer", Value: []byte(producerName)},
 		},
 	})
+}
+
+func stableEventID(parts ...string) string {
+	hasher := sha256.New()
+	for _, part := range parts {
+		_, _ = hasher.Write([]byte(part))
+		_, _ = hasher.Write([]byte{0})
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func countZeekLogRows(path string) int {
@@ -193,6 +217,7 @@ func parseZeekTSVLog(path string) ([]zeekLogRecord, error) {
 	var records []zeekLogRecord
 
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -307,6 +332,20 @@ func (s *Service) publishSubtaskHitEvents(ctx context.Context, opts zeekRunOptio
 	}
 
 	publish := func(hit analysisSubtaskHitEvent) error {
+		hit.EventID = stableEventID(
+			"subtask_hit",
+			opts.taskID,
+			opts.uuid,
+			hit.SourceType,
+			hit.RuleType,
+			hit.Indicator,
+			hit.SrcIp,
+			strconv.Itoa(hit.SrcPort),
+			hit.DstIp,
+			strconv.Itoa(hit.DstPort),
+			hit.Proto,
+			hit.Message,
+		)
 		hit.EventType = "subtask_hit"
 		hit.EventVersion = eventVersion
 		hit.EventTime = time.Now().Format(time.RFC3339)
@@ -364,6 +403,7 @@ func (s *Service) publishSubtaskEvent(ctx context.Context, opts zeekRunOptions, 
 	}
 
 	payload := analysisSubtaskEvent{
+		EventID:      stableEventID(eventType, opts.taskID, opts.uuid),
 		EventType:    eventType,
 		EventVersion: eventVersion,
 		EventTime:    time.Now().Format(time.RFC3339),
@@ -427,14 +467,18 @@ func (s *Service) publishParentEventIfReady(ctx context.Context, taskID string) 
 	}
 
 	payload := analysisParentEvent{
+		EventID:      stableEventID(eventType, taskID),
 		EventType:    eventType,
 		EventVersion: eventVersion,
 		EventTime:    time.Now().Format(time.RFC3339),
 		Producer:     producerName,
 		AnalysisMode: "offline",
 		TaskID:       taskID,
+		UUID:         "",
 		PcapID:       status.PcapID,
 		PcapPath:     status.PcapPath,
+		ScriptID:     "",
+		ScriptPath:   "",
 		Status:       normalizeParentEventStatus(status),
 		Verdict:      deriveParentVerdict(status),
 		TotalCount:   status.TotalCount,
@@ -460,6 +504,9 @@ func (s *Service) Close() error {
 	}
 	if s.extractPublisher != nil {
 		errs = append(errs, s.extractPublisher.Close())
+	}
+	if s.verificationPublisher != nil {
+		errs = append(errs, s.verificationPublisher.Close())
 	}
 
 	return errors.Join(errs...)

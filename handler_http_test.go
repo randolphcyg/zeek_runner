@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,86 @@ func TestHTTPHandler_HandleSyntaxCheck_MissingParams(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHTTPHandler_HandleListAndGetScripts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	root := t.TempDir()
+	writeTestScript(t, root, "script.zeek", `const SCRIPT_ID = "SCRIPT_ONE";`)
+	registry, err := newScriptRegistry(root)
+	if err != nil {
+		t.Fatalf("newScriptRegistry failed: %v", err)
+	}
+	handler := NewHTTPHandler(&Service{scriptRegistry: registry}, nil)
+
+	router := gin.New()
+	router.GET("/scripts", handler.HandleListScripts)
+	router.GET("/scripts/:scriptID", handler.HandleGetScript)
+
+	req, _ := http.NewRequest(http.MethodGet, "/scripts?enabledOnly=true&name=one", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var listResp struct {
+		Code int `json:"code"`
+		Data struct {
+			Scripts []ScriptInfo `json:"scripts"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal list response failed: %v", err)
+	}
+	if len(listResp.Data.Scripts) != 1 || listResp.Data.Scripts[0].ScriptID != "SCRIPT_ONE" {
+		t.Fatalf("unexpected list response: %+v", listResp)
+	}
+
+	req, _ = http.NewRequest(http.MethodGet, "/scripts/SCRIPT_ONE", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHTTPHandler_HandleGetScript_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registry, err := newScriptRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("newScriptRegistry failed: %v", err)
+	}
+	handler := NewHTTPHandler(&Service{scriptRegistry: registry}, nil)
+	router := gin.New()
+	router.GET("/scripts/:scriptID", handler.HandleGetScript)
+
+	req, _ := http.NewRequest(http.MethodGet, "/scripts/NOPE", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHTTPHandler_ResolveSyntaxCheckPath_ScriptID(t *testing.T) {
+	root := t.TempDir()
+	scriptPath := writeTestScript(t, root, "script.zeek", `const SCRIPT_ID = "SCRIPT";`)
+	registry, err := newScriptRegistry(root)
+	if err != nil {
+		t.Fatalf("newScriptRegistry failed: %v", err)
+	}
+	handler := NewHTTPHandler(&Service{scriptRegistry: registry}, nil)
+
+	got, err := handler.resolveSyntaxCheckPath(SyntaxCheckReq{ScriptID: "SCRIPT"})
+	if err != nil {
+		t.Fatalf("resolveSyntaxCheckPath failed: %v", err)
+	}
+	if got != filepath.ToSlash(scriptPath) {
+		t.Fatalf("expected %q, got %q", scriptPath, got)
 	}
 }
 
@@ -112,12 +193,11 @@ func TestValidateReq_MissingScriptID(t *testing.T) {
 
 func TestValidateReq_RelativePath(t *testing.T) {
 	req := AnalyzeReq{
-		TaskID:     "test-001",
-		UUID:       "test-uuid",
-		PcapID:     "pcap-001",
-		PcapPath:   "test.pcap",
-		ScriptID:   "script-001",
-		ScriptPath: "/tmp/test.zeek",
+		TaskID:   "test-001",
+		UUID:     "test-uuid",
+		PcapID:   "pcap-001",
+		PcapPath: "test.pcap",
+		ScriptID: "script-001",
 	}
 
 	err := validateReq(req)

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -93,6 +94,53 @@ func TestConfig_Defaults(t *testing.T) {
 	grpcAddr := fmt.Sprintf("%s:%d", cfg.GRPC.Host, cfg.GRPC.Port)
 	if grpcAddr != "0.0.0.0:50051" {
 		t.Errorf("expected default GRPC addr 0.0.0.0:50051, got %s", grpcAddr)
+	}
+	if !cfg.Zeek.AutoReloadScripts {
+		t.Error("expected script auto reload to be enabled by default")
+	}
+	if cfg.Zeek.ScriptReloadDebounce != "2s" {
+		t.Errorf("expected default script reload debounce 2s, got %s", cfg.Zeek.ScriptReloadDebounce)
+	}
+	if cfg.Zeek.ScriptReloadInterval != "60s" {
+		t.Errorf("expected default script reload interval 60s, got %s", cfg.Zeek.ScriptReloadInterval)
+	}
+}
+
+func TestConfigFile_ZeekScriptAutoReloadFalse(t *testing.T) {
+	t.Setenv("ZEEK_AUTO_RELOAD_SCRIPTS", "")
+	t.Setenv("ZEEK_SCRIPT_RELOAD_DEBOUNCE", "")
+	t.Setenv("ZEEK_SCRIPT_RELOAD_INTERVAL", "")
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+zeek:
+  scriptRoot: "/tmp/scripts"
+  autoReloadScripts: false
+  scriptReloadDebounce: "1s"
+  scriptReloadInterval: "30s"
+`), 0o644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+
+	fileCfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadConfigFile failed: %v", err)
+	}
+	envCfg := &Config{Zeek: ZeekConfig{
+		AutoReloadScripts:    true,
+		ScriptReloadDebounce: "2s",
+		ScriptReloadInterval: "60s",
+	}}
+	merged := MergeConfigWithEnv(fileCfg, envCfg)
+
+	if merged.Zeek.AutoReloadScripts {
+		t.Fatal("expected autoReloadScripts false from config file")
+	}
+	if merged.Zeek.ScriptReloadDebounce != "1s" {
+		t.Fatalf("expected debounce 1s, got %s", merged.Zeek.ScriptReloadDebounce)
+	}
+	if merged.Zeek.ScriptReloadInterval != "30s" {
+		t.Fatalf("expected interval 30s, got %s", merged.Zeek.ScriptReloadInterval)
 	}
 }
 

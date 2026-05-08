@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +22,8 @@ import (
 
 const (
 	customConfigPath         = "/usr/local/zeek/share/zeek/base/custom/config.zeek"
+	customIntelConfigPath    = "/usr/local/zeek/share/zeek/base/custom/config_intel.zeek"
+	customExtractConfigPath  = "/usr/local/zeek/share/zeek/base/custom/config_extract.zeek"
 	defaultExtractScriptPath = "/opt/zeek_runner/file_extract_script/extract_file.zeek"
 	maxCommandOutputBytes    = 8192
 	outputTruncatedMarker    = "\n...[truncated]\n"
@@ -32,12 +36,13 @@ type LimitWriter struct {
 }
 
 func (l *LimitWriter) Write(p []byte) (n int, err error) {
+	originalLen := len(p)
 	if l.n <= 0 {
 		if !l.truncated {
 			l.truncated = true
 			_, _ = io.WriteString(l.w, outputTruncatedMarker)
 		}
-		return len(p), nil
+		return originalLen, nil
 	}
 	if int64(len(p)) > l.n {
 		p = p[:l.n]
@@ -48,7 +53,10 @@ func (l *LimitWriter) Write(p []byte) (n int, err error) {
 		l.truncated = true
 		_, _ = io.WriteString(l.w, outputTruncatedMarker)
 	}
-	return
+	if err != nil {
+		return n, err
+	}
+	return originalLen, nil
 }
 
 type zeekRunOptions struct {
@@ -59,9 +67,20 @@ type zeekRunOptions struct {
 	pcapPath   string
 	scriptID   string
 	scriptPath string
+	onlyNotice bool
 	outputDir  string
 	env        map[string]string
 	afterRun   func(context.Context)
+}
+
+func (opts zeekRunOptions) zeekConfigPath() string {
+	if opts.taskType == string(offlineTaskExtract) {
+		return customExtractConfigPath
+	}
+	if isIntelDetectionScript(opts.scriptID, opts.scriptPath) {
+		return customIntelConfigPath
+	}
+	return customConfigPath
 }
 
 type AnalyzeReq struct {
@@ -115,22 +134,37 @@ type zeekRunResult struct {
 }
 
 type Service struct {
-	pool              *ants.Pool
-	configManager     *ConfigManager
-	taskManager       *TaskManager
-	fileDedupMgr      *FileDedupManager
-	analysisPublisher *analysisEventPublisher
-	extractPublisher  *extractEventPublisher
+	pool                  *ants.Pool
+	configManager         *ConfigManager
+	taskManager           *TaskManager
+	fileDedupMgr          *FileDedupManager
+	analysisPublisher     *analysisEventPublisher
+	extractPublisher      *extractEventPublisher
+	verificationPublisher *verificationLogPublisher
+	scriptRegistryMu      sync.RWMutex
+	scriptRegistry        *scriptRegistry
 }
 
 func NewService(pool *ants.Pool, cm *ConfigManager, tm *TaskManager, fdm *FileDedupManager) *Service {
+	cfg := cm.Get()
+	registry, err := newScriptRegistry(cfg.Zeek.ScriptRoot)
+	if err != nil {
+		slog.Warn("script registry initial scan failed", "root", cfg.Zeek.ScriptRoot, "err", err)
+		registry = &scriptRegistry{
+			root: cfg.Zeek.ScriptRoot,
+			byID: map[string]ScriptInfo{},
+		}
+	}
+
 	return &Service{
-		pool:              pool,
-		configManager:     cm,
-		taskManager:       tm,
-		fileDedupMgr:      fdm,
-		analysisPublisher: newAnalysisEventPublisher(cm.Get().Kafka.Brokers),
-		extractPublisher:  newExtractEventPublisher(cm.Get().Kafka.Brokers),
+		pool:                  pool,
+		configManager:         cm,
+		taskManager:           tm,
+		fileDedupMgr:          fdm,
+		analysisPublisher:     newAnalysisEventPublisher(cfg.Kafka.Brokers),
+		extractPublisher:      newExtractEventPublisher(cfg.Kafka.Brokers),
+		verificationPublisher: newVerificationLogPublisher(cfg.Kafka.Brokers),
+		scriptRegistry:        registry,
 	}
 }
 
@@ -139,6 +173,11 @@ func (s *Service) getConfig() *Config {
 }
 
 func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*AnalyzeResp, error) {
+	req, err := s.prepareAnalyzeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := s.executeOfflineTaskInPool(ctx, newOfflineScanTask(req))
 	if err != nil {
 		return nil, err
@@ -240,6 +279,11 @@ func validateExtractReq(req ExtractReq) error {
 func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, error) {
 	if s.taskManager == nil {
 		return nil, errors.New("task manager not initialized, Redis required")
+	}
+
+	req, err := s.prepareAnalyzeReq(req)
+	if err != nil {
+		return nil, err
 	}
 
 	task, err := s.taskManager.CreateTask(ctx, req)
@@ -442,7 +486,77 @@ func (s *Service) processQueuedTask(ctx context.Context, uuid string) {
 }
 
 func (s *Service) runZeekAnalysis(parentCtx context.Context, req AnalyzeReq) (zeekRunResult, error) {
+	var err error
+	req, err = s.prepareAnalyzeReq(req)
+	if err != nil {
+		return zeekRunResult{}, err
+	}
 	return s.runOfflineTask(parentCtx, newOfflineScanTask(req))
+}
+
+func (s *Service) prepareAnalyzeReq(req AnalyzeReq) (AnalyzeReq, error) {
+	if err := validateReq(req); err != nil {
+		return req, err
+	}
+	script, err := s.ResolveManagedScript(req.ScriptID, req.ScriptPath)
+	if err != nil {
+		return req, err
+	}
+	req.ScriptPath = script.ScriptPath
+	return req, nil
+}
+
+func (s *Service) ListScripts(req ListScriptsRequest) []ScriptInfo {
+	registry := s.getScriptRegistry()
+	if registry == nil {
+		return nil
+	}
+	return registry.List(req)
+}
+
+func (s *Service) GetScript(scriptID string) (ScriptInfo, error) {
+	registry := s.getScriptRegistry()
+	if registry == nil {
+		return ScriptInfo{}, fmt.Errorf("%w: registry unavailable", ErrScriptNotFound)
+	}
+	return registry.Get(scriptID)
+}
+
+func (s *Service) ReloadScripts() (ReloadScriptsResponse, error) {
+	if s == nil || s.configManager == nil {
+		return ReloadScriptsResponse{}, errors.New("service config unavailable")
+	}
+
+	root := s.getConfig().Zeek.ScriptRoot
+	s.scriptRegistryMu.Lock()
+	defer s.scriptRegistryMu.Unlock()
+
+	if s.scriptRegistry == nil || s.scriptRegistry.root != root {
+		registry, err := newScriptRegistry(root)
+		if err != nil {
+			return ReloadScriptsResponse{}, err
+		}
+		s.scriptRegistry = registry
+		return reloadResponseFromScripts(registry.List(ListScriptsRequest{})), nil
+	}
+	return s.scriptRegistry.Reload()
+}
+
+func (s *Service) ResolveManagedScript(scriptID, optionalScriptPath string) (ScriptInfo, error) {
+	registry := s.getScriptRegistry()
+	if registry == nil {
+		return ScriptInfo{}, errors.New("script registry unavailable")
+	}
+	return registry.Resolve(scriptID, optionalScriptPath)
+}
+
+func (s *Service) getScriptRegistry() *scriptRegistry {
+	if s == nil {
+		return nil
+	}
+	s.scriptRegistryMu.RLock()
+	defer s.scriptRegistryMu.RUnlock()
+	return s.scriptRegistry
 }
 
 func (s *Service) executeOfflineTaskInPool(ctx context.Context, spec offlineTaskSpec) (*taskExecutionResult, error) {
@@ -531,7 +645,9 @@ func (s *Service) runZeekCommand(parentCtx context.Context, opts zeekRunOptions)
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, "zeek", "-Cr", opts.pcapPath, opts.scriptPath, customConfigPath)
+	customPath := opts.zeekConfigPath()
+
+	cmd := exec.CommandContext(ctx, "zeek", "-Cr", opts.pcapPath, opts.scriptPath, customPath)
 	cmd.Dir = workDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.Env = appendCommandEnv(os.Environ(), opts.env)
@@ -598,9 +714,17 @@ func (s *Service) runZeekCommand(parentCtx context.Context, opts zeekRunOptions)
 	}
 
 	if opts.taskType == string(offlineTaskScan) {
-		if err := s.publishSubtaskHitEvents(parentCtx, opts, workDir); err != nil {
-			LogTaskError("subtask_hit_publish_failed", opts.taskID, opts.uuid, err)
+		if err := s.publishVerificationLogEvents(parentCtx, opts, workDir); err != nil {
+			LogTaskError("verification_log_publish_failed", opts.taskID, opts.uuid, err)
 			return zeekRunResult{output: output, stats: stats}, err
+		}
+		if opts.onlyNotice {
+			if err := s.publishSubtaskHitEvents(parentCtx, opts, workDir); err != nil {
+				LogTaskError("subtask_hit_publish_failed", opts.taskID, opts.uuid, err)
+				return zeekRunResult{output: output, stats: stats}, err
+			}
+		} else {
+			LogTaskEvent("subtask_hits_skipped_for_verification", opts.taskID, opts.uuid)
 		}
 	}
 
@@ -651,8 +775,8 @@ func validateReq(req AnalyzeReq) error {
 	if req.ScriptID == "" {
 		return errors.New("missing scriptID (required for malicious scan)")
 	}
-	if req.PcapPath == "" || req.ScriptPath == "" {
-		return errors.New("missing paths")
+	if req.PcapPath == "" {
+		return errors.New("missing pcapPath")
 	}
 
 	if err := validatePath(req.PcapPath, "pcap"); err != nil {
@@ -662,11 +786,10 @@ func validateReq(req AnalyzeReq) error {
 		return fmt.Errorf("file not found: %s", req.PcapPath)
 	}
 
-	if err := validatePath(req.ScriptPath, "script"); err != nil {
-		return err
-	}
-	if !isFileExist(req.ScriptPath) {
-		return fmt.Errorf("script not found: %s", req.ScriptPath)
+	if req.ScriptPath != "" {
+		if err := validatePath(req.ScriptPath, "script"); err != nil {
+			return err
+		}
 	}
 
 	return nil

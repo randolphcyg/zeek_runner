@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -100,15 +101,42 @@ func (t offlineTaskSpec) zeekEnv(kafkaBrokers string) map[string]string {
 
 	if t.kind == offlineTaskExtract {
 		env["MIN_FILE_SIZE_KB"] = strconv.Itoa(t.extractedFileMinSize)
-		env["MAX_FILE_SIZE_MB"] = strconv.Itoa(t.extractedFileMaxSize)
+		if t.extractedFileMaxSize > 0 {
+			env["MAX_FILE_SIZE_MB"] = strconv.Itoa(t.extractedFileMaxSize)
+		}
 		env["ENABLE_OFFLINE_INTEL_REPLAY"] = "false"
 		return env
 	}
 
 	env["ONLY_NOTICE"] = strconv.FormatBool(t.onlyNotice)
 	env["EXTRACTED_FILE_MIN_SIZE"] = strconv.Itoa(t.extractedFileMinSize)
-	env["ENABLE_OFFLINE_INTEL_REPLAY"] = "true"
+	env["ENABLE_OFFLINE_INTEL_REPLAY"] = strconv.FormatBool(t.isIntelDetection())
 	return env
+}
+
+func (t offlineTaskSpec) zeekConfigPath() string {
+	if t.kind == offlineTaskExtract {
+		return customExtractConfigPath
+	}
+	if t.isIntelDetection() {
+		return customIntelConfigPath
+	}
+	return customConfigPath
+}
+
+func (t offlineTaskSpec) isIntelDetection() bool {
+	return isIntelDetectionScript(t.scriptID, t.scriptPath)
+}
+
+func isIntelDetectionScript(scriptID, scriptPath string) bool {
+	normalizedID := strings.ToUpper(strings.TrimSpace(scriptID))
+	if strings.HasPrefix(normalizedID, "DETECT_INTEL_FEED_HIT") ||
+		strings.Contains(normalizedID, "INTEL_FEED_HIT") {
+		return true
+	}
+
+	scriptName := strings.ToLower(strings.TrimSpace(scriptPath))
+	return strings.Contains(scriptName, "detect_intel_feed_hit")
 }
 
 func (t offlineTaskSpec) zeekRunOptions(s *Service) zeekRunOptions {
@@ -120,6 +148,7 @@ func (t offlineTaskSpec) zeekRunOptions(s *Service) zeekRunOptions {
 		pcapPath:   t.pcapPath,
 		scriptID:   t.scriptID,
 		scriptPath: t.scriptPath,
+		onlyNotice: t.onlyNotice,
 		outputDir:  t.outputDir,
 		env:        t.zeekEnv(s.getConfig().Kafka.Brokers),
 	}

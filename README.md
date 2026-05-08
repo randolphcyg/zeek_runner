@@ -714,7 +714,7 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+    "pcapPath": "/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap",
     "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": true,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
@@ -730,7 +730,7 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+    "pcapPath": "/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap",
     "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": true,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
@@ -750,7 +750,7 @@ curl -X POST \
   -H "User-Agent: test" \
   -H "Authorization: your-token" \
   -d '{
-    "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+    "pcapPath": "/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap",
     "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek",
     "onlyNotice": false,
     "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
@@ -831,7 +831,7 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
   "onlyNotice": true,
   "pcapID": "pcap-001",
-  "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+  "pcapPath": "/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap",
   "scriptID": "script-001",
   "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/Analyze
@@ -842,7 +842,7 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
   "onlyNotice": true,
   "pcapID": "pcap-001",
-  "pcapPath": "/data/zeek_runner/pcaps/sshguess.pcap",
+  "pcapPath": "/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap",
   "scriptID": "script-001",
   "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/AsyncAnalyze
@@ -883,7 +883,7 @@ for i in {1..10}; do
     -H "User-Agent: test" \
     -H "Authorization: $TOKEN" \
     -d "{
-      \"pcapPath\": \"/data/zeek_runner/pcaps/sshguess.pcap\",
+      \"pcapPath\": \"/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap\",
       \"scriptPath\": \"/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
       \"onlyNotice\": true,
       \"taskID\": \"test-$i\",
@@ -906,7 +906,7 @@ for i in {1..10}; do
       \"taskID\": \"grpc-test-$i\",
       \"uuid\": \"grpc-uuid-$i\",
       \"onlyNotice\": true,
-      \"pcapPath\": \"/data/zeek_runner/pcaps/sshguess.pcap\",
+      \"pcapPath\": \"/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap\",
       \"scriptPath\": \"/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek\",
       \"pcapID\": \"pcap-$i\",
       \"scriptID\": \"script-$i\"
@@ -1005,47 +1005,47 @@ zeek_runner_3: 7 个任务
 # ONLY_NOTICE=true 环境变量设置为true只发送notice日志 为false发送所有日志(除notice)
 # go程序中 config.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 onlyNotice三个参数;
 ONLY_NOTICE=true SCRIPT_PATH=/xx/xx/scripts/detect_ssh_bruteforce.zeek \ 
-PCAP_PATH=/xx/xx/pcaps/sshguess.pcap \
-zeek -Cr ./pcaps/sshguess.pcap ./config.zeek ./scripts/detect_ssh_bruteforce.zeek
+PCAP_PATH=/xx/xx/pcaps/ssh_bruteforce_test.pcap \
+zeek -Cr ./pcaps/ssh_bruteforce_test.pcap ./config.zeek ./scripts/detect_ssh_bruteforce.zeek
 
 ##### 仅本地测试
 
 # SSH暴力破解攻击
-zeek -Cr ./pcaps/sshguess.pcap \
+zeek -Cr ./pcaps/ssh_bruteforce_test.pcap \
 ./test.zeek ./scripts/detect_ssh_bruteforce.zeek
 
 # DNS洪水攻击/放大攻击
-zeek -Cr ./amp.dns.RRSIG.fragmented.pcap \
+zeek -Cr ./pcaps/dns_flood_test.pcap \
 ./test.zeek \
 ./scripts/detect_dns_flood.zeek
 
 # 恶意User-Agent检测
-zeek -Cr ./pcaps/ua.pcap \
+zeek -Cr ./pcaps/http_suspicious_ua_test.pcap \
 ./test.zeek \
 ./scripts/detect_http_suspicious_ua.zeek
 
 # HTTP恶意文件上传(Webshell)
-zeek -Cr ./pcaps/BTLOPortScan.pcap \
+zeek -Cr ./pcaps/http_webshell_test.pcap \
 ./test.zeek \
 ./scripts/detect_http_webshell.zeek
 
 # HTTP拒绝服务攻击(CC攻击)
-zeek -Cr ./pcaps/HTTPDoSNovember2021.pcapng \
+zeek -Cr ./pcaps/http_flood_test.pcap \
 ./test.zeek \
 ./scripts/detect_http_flood.zeek
 
 # TCP SYN洪水攻击
-zeek -Cr ./pcaps/SYNflood.pcap \
+zeek -Cr ./pcaps/syn_flood_test.pcap \
 ./test.zeek \
 ./scripts/detect_syn_flood.zeek
 
 # SSH异常大文件传输(SCP/SFTP)
-zeek -Cr ./pcaps/scp.pcapng \
+zeek -Cr ./pcaps/ssh_file_transfer_test.pcap \
 ./test.zeek \
 ./scripts/detect_ssh_file_transfer.zeek
 
 # Unix命令注入攻击
-zeek -Cr ./pcaps/exploit.pcap \
+zeek -Cr ./pcaps/http_cmd_injection_test.pcap \
 ./test.zeek \
 ./scripts/detect_http_cmd_injection.zeek
 
@@ -1148,3 +1148,122 @@ docker exec zeek_runner go test -v -tags=integration ./...
 - 所有检测脚本的语法正确性
 - Zeek 版本获取功能
 - 脚本语法检查功能
+
+## 离线分析模式说明
+
+当前服务只支持离线 pcap 分析。Go 服务负责 API、任务并发、超时、Kafka/Redis 状态和结果事件；每个任务启动一次 Zeek：
+
+```shell
+zeek -Cr <pcapPath> <scriptPath> /usr/local/zeek/share/zeek/base/custom/config.zeek
+```
+
+文件提取任务使用轻量配置：
+
+```shell
+zeek -Cr <pcapPath> /opt/zeek_runner/file_extract_script/extract_file.zeek /usr/local/zeek/share/zeek/base/custom/config_extract.zeek
+```
+
+实时流量分析后续应使用独立 Zeek node/cluster 或容器常驻进程，不复用当前一次一任务的 Go wrapper 模式。
+
+### Offline custom 加载
+
+| 入口 | 用途 | 加载内容 |
+|------|------|----------|
+| `custom/config.zeek` | 恶意行为检测、intel 命中 | runtime、task status、intel feeds、Kafka、notice、offline intel replay |
+| `custom/config_extract.zeek` | 文件提取 | runtime、task status、Kafka |
+
+Kafka topic 默认保持兼容，可通过环境变量覆盖：
+
+| 环境变量 | 默认值 |
+|---------|--------|
+| `ZEEK_KAFKA_DEFAULT_TOPIC` | `zeek_logs` |
+| `ZEEK_KAFKA_NOTICE_TOPIC` | `zeek_raw_notice` |
+| `ZEEK_KAFKA_INTEL_TOPIC` | `zeek_raw_intel` |
+| `ZEEK_KAFKA_TASK_STATUS_TOPIC` | `zeek_raw_task_status` |
+| `ZEEK_KAFKA_PRODUCER` | `zeek_raw` |
+
+### 可复现恶意行为样本
+
+测试流量包已放在 `pcaps/`。容器内路径统一为 `/opt/zeek_runner/pcaps/<file>`，脚本路径为 `/opt/zeek_runner/scripts/<script>`。
+
+| 行为 | 脚本 | pcap | 预期输出 |
+|------|------|------|----------|
+| 异常大流量 | `detect_anomalous_traffic.zeek` | `anomalous_traffic_test.pcap` | `Anomalous_Traffic_Detected` notice |
+| 批量下载 | `detect_bulk_download.zeek` | `bulk_download_test.pcap` | `Bulk_Download_Detected` notice |
+| DNS Flood/ANY 放大 | `detect_dns_flood.zeek` | `dns_flood_test.pcap` | `DNS_Query_Flood`、`DNS_Amplification_ANY` notice |
+| 关键文件访问/篡改迹象 | `detect_file_tampering.zeek` | `file_tampering_test.pcap` | `File_Tampering_Detected` notice |
+| HTTP 暴力破解 | `detect_http_brute_force.zeek` | `http_bruteforce_test.pcap` | `HTTP_Brute_Force_Detected` notice |
+| HTTP 命令注入 | `detect_http_cmd_injection.zeek` | `http_cmd_injection_test.pcap` | `HTTP_Command_Injection` notice |
+| HTTP Flood | `detect_http_flood.zeek` | `http_flood_test.pcap` | `HTTP_Flood_Detected` notice |
+| 可疑 User-Agent | `detect_http_suspicious_ua.zeek` | `http_suspicious_ua_test.pcap` | suspicious UA notice |
+| WebShell 上传 | `detect_http_webshell.zeek` | `http_webshell_test.pcap` | webshell upload notice |
+| Intel 情报命中 | `detect_intel_feed_hit.zeek` | `intel_hit_test.pcap` | `intel.log` / `zeek_raw_intel` 命中 |
+| Slammer Worm | `detect_slammer_worm.zeek` | `slammer_worm_test.pcap` | Slammer notice |
+| SQLi WebShell | `detect_sqli_webshell.zeek` | `sqli_webshell_test.pcap` | SQLi/webshell notice |
+| SSH 暴力破解 | `detect_ssh_bruteforce.zeek` | `ssh_bruteforce_test.pcap` | `SSH::Password_Guessing` notice |
+| SSH 大文件传输 | `detect_ssh_file_transfer.zeek` | `ssh_file_transfer_test.pcap` | `Suspicious_SCP_Transfer` notice |
+| SYN Flood | `detect_syn_flood.zeek` | `syn_flood_test.pcap` | `notice.log` / `zeek_raw_notice` 中出现 `SynFlood::SynFlood` |
+| 文件提取 | `extract_file.zeek` | `file_extract_test.pcap` | `zeek_extract_events` 中出现提取文件事件，输出目录有 `firmware.bin` |
+
+通用调用示例：
+
+```shell
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: test" \
+  -H "Authorization: your-token-here" \
+  -d '{
+    "pcapPath": "/opt/zeek_runner/pcaps/syn_flood_test.pcap",
+    "scriptPath": "/opt/zeek_runner/scripts/detect_syn_flood.zeek",
+    "onlyNotice": true,
+    "uuid": "test-detect-syn-flood",
+    "taskID": "test-detect-syn-flood",
+    "pcapID": "pcap-syn-flood-test",
+    "scriptID": "script-detect-syn-flood"
+  }' \
+  http://localhost:18081/api/v1/analyze
+```
+
+替换 `pcapPath`、`scriptPath`、`uuid`、`taskID`、`pcapID`、`scriptID` 即可验证表中其他行为。
+
+如需重新生成测试包：
+
+```shell
+python3 scripts/test/generate_offline_test_pcaps.py
+```
+
+### 文件提取
+
+文件提取脚本按 MIME 和后缀提取固件、二进制、压缩包、安装包、镜像等高价值文件。API 字段会传入 Zeek 环境变量：
+
+| API 字段 | Zeek 环境变量 | 说明 |
+|---------|---------------|------|
+| `outputDir` | `EXTRACTED_FILE_PATH` | 提取输出目录 |
+| `extractedFileMinSize` | `MIN_FILE_SIZE_KB` | 最小保留大小，KB |
+| `extractedFileMaxSize` | `MAX_FILE_SIZE_MB` | 最大提取限制，MB |
+
+提取任务使用 `custom/config_extract.zeek`，默认不加载 intel feeds/replay，减少离线提取开销。
+
+调用示例：
+
+```shell
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: test" \
+  -H "Authorization: your-token-here" \
+  -d '{
+    "pcapPath": "/opt/zeek_runner/pcaps/file_extract_test.pcap",
+    "scriptPath": "/opt/zeek_runner/file_extract_script/extract_file.zeek",
+    "outputDir": "/opt/zeek_runner/extracted/file_extract_test",
+    "extractedFileMinSize": 20,
+    "extractedFileMaxSize": 200,
+    "uuid": "test-file-extract",
+    "taskID": "test-file-extract",
+    "pcapID": "pcap-file-extract-test"
+  }' \
+  http://localhost:18081/api/v1/extract
+```
+
+### Intel 情报库
+
+镜像内置 `Zeek-Intelligence-Feeds`。离线 pcap 中，Zeek 可能先看到流量、后完成 feed 加载，所以 `custom/offline/intel_replay.zeek` 会缓存 IP、DNS、HTTP URL、TLS SNI 等 observable，feed 加载完成后回放到 Intel 框架。无 feed 时直接跳过 replay；文件提取任务默认禁用 replay。

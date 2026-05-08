@@ -1,4 +1,19 @@
-redef Kafka::topic_name = "zeek_logs";
+function kafka_env_or_default(name: string, default_value: string): string
+    {
+    local value = getenv(name);
+    if ( value != "" )
+        return value;
+
+    return default_value;
+    }
+
+const default_kafka_topic = kafka_env_or_default("ZEEK_KAFKA_DEFAULT_TOPIC", "zeek_logs");
+const notice_kafka_topic = kafka_env_or_default("ZEEK_KAFKA_NOTICE_TOPIC", "zeek_raw_notice");
+const intel_kafka_topic = kafka_env_or_default("ZEEK_KAFKA_INTEL_TOPIC", "zeek_raw_intel");
+const task_status_kafka_topic = kafka_env_or_default("ZEEK_KAFKA_TASK_STATUS_TOPIC", "zeek_raw_task_status");
+const kafka_producer_name = kafka_env_or_default("ZEEK_KAFKA_PRODUCER", "zeek_raw");
+
+redef Kafka::topic_name = default_kafka_topic;
 
 redef Kafka::kafka_conf += {
     ["bootstrap.servers"] = getenv("KAFKA_BROKERS"),
@@ -40,11 +55,11 @@ function configure_kafka_stream(id: Log::ID)
     local topic = Kafka::topic_name;
 
     if ( id == Notice::LOG )
-        topic = "zeek_raw_notice";
+        topic = notice_kafka_topic;
     else if ( id == Intel::LOG )
-        topic = "zeek_raw_intel";
-    else if ( id == TaskStatus::LOG && is_extract_mode )
-        topic = "zeek_raw_task_status";
+        topic = intel_kafka_topic;
+    else if ( id == TaskStatus::LOG )
+        topic = task_status_kafka_topic;
 
     if ( id in Log::active_streams )
         {
@@ -66,7 +81,7 @@ function ensure_intel_kafka_stream()
     local filter_config: Log::Filter = [
         $name = "kafka-intel-late-bind",
         $writer = Log::WRITER_KAFKAWRITER,
-        $config = table(["topic_name"] = "zeek_raw_intel")
+        $config = table(["topic_name"] = intel_kafka_topic)
     ];
 
     Log::add_filter(Intel::LOG, filter_config);
@@ -85,7 +100,7 @@ function ensure_notice_kafka_stream()
     local filter_config: Log::Filter = [
         $name = filter_name,
         $writer = Log::WRITER_KAFKAWRITER,
-        $config = table(["topic_name"] = "zeek_raw_notice")
+        $config = table(["topic_name"] = notice_kafka_topic)
     ];
 
     Log::add_filter(Notice::LOG, filter_config);
@@ -103,7 +118,7 @@ function ensure_files_kafka_stream()
     local filter_config: Log::Filter = [
         $name = filter_name,
         $writer = Log::WRITER_KAFKAWRITER,
-        $config = table(["topic_name"] = "zeek_raw_task_status")
+        $config = table(["topic_name"] = task_status_kafka_topic)
     ];
 
     Log::add_filter(Files::LOG, filter_config);
@@ -112,7 +127,7 @@ function ensure_files_kafka_stream()
 event zeek_init() &priority=10
     {
     Kafka::headers["analysisMode"] = current_analysis_mode();
-    Kafka::headers["producer"] = "zeek_raw";
+    Kafka::headers["producer"] = kafka_producer_name;
     Kafka::headers["eventVersion"] = "1.0";
 
     Log::create_stream(TaskStatus::LOG, [$columns=TaskStatus::Info, $path="task_status"]);

@@ -14,8 +14,8 @@ func TestLimitWriter_AppendsTruncationMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if written != 4 {
-		t.Fatalf("expected 4 bytes written, got %d", written)
+	if written != 8 {
+		t.Fatalf("expected original write length 8, got %d", written)
 	}
 
 	got := buf.String()
@@ -40,5 +40,37 @@ func TestLimitWriter_AppendsMarkerOnFollowUpWrite(t *testing.T) {
 
 	if count := strings.Count(buf.String(), "...[truncated]"); count != 1 {
 		t.Fatalf("expected one truncation marker, got %d in %q", count, buf.String())
+	}
+}
+
+func TestZeekRunOptions_ConfigPath(t *testing.T) {
+	tests := []struct {
+		name string
+		opts zeekRunOptions
+		want string
+	}{
+		{
+			name: "default malicious scan skips intel feeds",
+			opts: zeekRunOptions{taskType: string(offlineTaskScan), scriptID: "DETECT_HTTP_FLOOD_v1"},
+			want: customConfigPath,
+		},
+		{
+			name: "intel scan uses intel profile",
+			opts: zeekRunOptions{taskType: string(offlineTaskScan), scriptID: "DETECT_INTEL_FEED_HIT_v1"},
+			want: customIntelConfigPath,
+		},
+		{
+			name: "extract uses extract profile",
+			opts: zeekRunOptions{taskType: string(offlineTaskExtract), scriptID: "DETECT_INTEL_FEED_HIT_v1"},
+			want: customExtractConfigPath,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.opts.zeekConfigPath(); got != tt.want {
+				t.Fatalf("expected config path %q, got %q", tt.want, got)
+			}
+		})
 	}
 }

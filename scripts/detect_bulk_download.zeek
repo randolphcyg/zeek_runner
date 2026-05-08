@@ -5,6 +5,7 @@ const SCRIPT_ID = "DETECT_BULK_DOWNLOAD_v1";
 # 行为类型：批量下载恶意文件
 # 行为分类：恶意文件获取
 # 行为描述：检测单IP短时间内高频下载文件，尤其固件/可执行文件
+# 攻击特征：同一源地址短时间内连续下载大量可执行文件、固件、压缩包等高风险文件
 
 @load base/frameworks/notice
 @load base/frameworks/sumstats

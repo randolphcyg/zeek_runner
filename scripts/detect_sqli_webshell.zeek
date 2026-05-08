@@ -6,6 +6,7 @@ const SCRIPT_ID = "DETECT_SQLI_WEBSHELL_v1";
 # 行为类型：SQL注入写入文件
 # 行为分类：Web攻击/数据库攻击
 # 行为描述：检测利用SQL注入漏洞(INTO OUTFILE)尝试在服务器写入Webshell的高危行为
+# 攻击特征：HTTP参数中出现INTO OUTFILE、写入脚本后缀、Web目录路径等SQL注入落地Webshell载荷
 
 @load base/protocols/http
 @load base/frameworks/notice

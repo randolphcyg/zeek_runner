@@ -21,14 +21,33 @@ func TestNewOfflineScanTask_ZeekEnv(t *testing.T) {
 	if env["ONLY_NOTICE"] != "true" {
 		t.Fatalf("expected ONLY_NOTICE=true, got %q", env["ONLY_NOTICE"])
 	}
-	if env["ENABLE_OFFLINE_INTEL_REPLAY"] != "true" {
-		t.Fatalf("expected replay enabled, got %q", env["ENABLE_OFFLINE_INTEL_REPLAY"])
+	if env["ENABLE_OFFLINE_INTEL_REPLAY"] != "false" {
+		t.Fatalf("expected replay disabled for default malicious scan, got %q", env["ENABLE_OFFLINE_INTEL_REPLAY"])
 	}
 	if env["SCRIPT_ID"] != "script-1" {
 		t.Fatalf("expected SCRIPT_ID to be preserved, got %q", env["SCRIPT_ID"])
 	}
 	if env["EXTRACTED_FILE_MIN_SIZE"] != "8" {
 		t.Fatalf("expected EXTRACTED_FILE_MIN_SIZE=8, got %q", env["EXTRACTED_FILE_MIN_SIZE"])
+	}
+}
+
+func TestNewOfflineScanTask_IntelDetectionEnvAndConfig(t *testing.T) {
+	spec := newOfflineScanTask(AnalyzeReq{
+		TaskID:     "task-intel",
+		UUID:       "uuid-intel",
+		PcapID:     "pcap-intel",
+		PcapPath:   "/tmp/intel.pcap",
+		ScriptID:   "DETECT_INTEL_FEED_HIT_v1",
+		ScriptPath: "/opt/zeek_runner/scripts/detect_intel_feed_hit.zeek",
+	})
+
+	env := spec.zeekEnv("kafka:9092")
+	if env["ENABLE_OFFLINE_INTEL_REPLAY"] != "true" {
+		t.Fatalf("expected replay enabled for intel detection, got %q", env["ENABLE_OFFLINE_INTEL_REPLAY"])
+	}
+	if got := spec.zeekConfigPath(); got != customIntelConfigPath {
+		t.Fatalf("expected intel config path %q, got %q", customIntelConfigPath, got)
 	}
 }
 

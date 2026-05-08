@@ -6,6 +6,7 @@ const SCRIPT_ID = "DETECT_HTTP_CMD_INJECT_v1";
 # 行为类型：Unix命令注入攻击
 # 行为分类：Web攻击/命令执行
 # 行为描述：检测HTTP URI及Header中包含的Shellshock及常见Unix系统命令特征
+# 攻击特征：HTTP参数或请求头中出现Shellshock、系统命令、命令连接符、敏感文件读取等注入载荷
 
 @load base/frameworks/notice
 @load base/protocols/http

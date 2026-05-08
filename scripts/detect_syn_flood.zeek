@@ -6,6 +6,7 @@ const SCRIPT_ID = "DETECT_SYN_FLOOD_v1";
 # 行为类型：TCP SYN洪水攻击
 # 行为分类：拒绝服务攻击(DoS)
 # 行为描述：检测源IP发送大量SYN包但未建立连接的行为(Half-open connections)
+# 攻击特征：短时间内大量SYN包未完成三次握手，半开连接数量异常升高
 
 @load base/frameworks/sumstats
 @load base/frameworks/notice
@@ -14,8 +15,8 @@ module SynFlood;
 
 export {
     redef enum Notice::Type += { SynFlood };
-    const syn_flood_threshold: double = 20.0; # 调试阈值
-    const check_interval: interval = 5sec;
+    const syn_flood_threshold: double = 100.0 &redef;
+    const check_interval: interval = 10sec &redef;
 }
 
 event zeek_init() {

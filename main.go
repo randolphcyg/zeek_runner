@@ -82,6 +82,9 @@ func main() {
 		auth.GET("/version/zeek", httpHandler.CmdHandler("zeek", "--version"))
 		auth.GET("/version/zeek-kafka", httpHandler.CmdHandler("zeek", "-N", "Seiso::Kafka"))
 		auth.POST("/syntax-check", httpHandler.HandleSyntaxCheck)
+		auth.GET("/scripts", httpHandler.HandleListScripts)
+		auth.GET("/scripts/:scriptID", httpHandler.HandleGetScript)
+		auth.POST("/scripts/reload", httpHandler.HandleReloadScripts)
 	}
 
 	srv := &http.Server{Addr: fmt.Sprintf("%s:%d", app.Config.HTTP.Host, app.Config.HTTP.Port), Handler: r}

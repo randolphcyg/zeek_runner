@@ -5,6 +5,7 @@ const SCRIPT_ID = "DETECT_FILE_TAMPERING_v1";
 # 行为类型：文件篡改
 # 行为分类：系统安全
 # 行为描述：检测文件被恶意修改的行为，包括关键系统文件的变更
+# 攻击特征：关键路径文件出现修改、重命名或可疑内容写入，指向配置篡改、持久化或破坏行为
 
 @load base/frameworks/notice
 @load base/frameworks/files
@@ -142,14 +143,10 @@ function is_suspicious_file(file_path: string): bool
 # 事件: HTTP 请求
 event http_request(c: connection, method: string, original_URI: string, unescaped_URI: string, version: string)
     {
-    # 打印 HTTP 请求信息（调试用）
-    print(fmt("HTTP Request: %s %s from %s to %s", method, unescaped_URI, c$id$orig_h, c$id$resp_h));
-    
     # 检查 URI 是否包含关键文件路径
     if ( unescaped_URI == "/etc/passwd" || unescaped_URI == "/etc/shadow" || unescaped_URI == "/Windows/System32/winlogon.exe" )
         {
         local critical_msg = fmt("检测到关键文件下载请求: %s", unescaped_URI);
-        print(fmt("ALERT: %s", critical_msg));
         NOTICE([$note=File_Tampering_Detected,
                 $msg=critical_msg,
                 $src=c$id$orig_h,
@@ -160,7 +157,6 @@ event http_request(c: connection, method: string, original_URI: string, unescape
     if ( starts_with(unescaped_URI, "/etc/") || starts_with(unescaped_URI, "/Windows/System32/") )
         {
         local dir_msg = fmt("检测到关键目录文件下载请求: %s", unescaped_URI);
-        print(fmt("ALERT: %s", dir_msg));
         NOTICE([$note=Suspicious_File_Modification,
                 $msg=dir_msg,
                 $src=c$id$orig_h,
@@ -173,7 +169,6 @@ event http_request(c: connection, method: string, original_URI: string, unescape
         if ( unescaped_URI == path || starts_with(unescaped_URI, path) )
             {
             local path_msg = fmt("检测到访问可疑路径: %s", unescaped_URI);
-            print(fmt("ALERT: %s", path_msg));
             NOTICE([$note=Suspicious_File_Modification,
                     $msg=path_msg,
                     $src=c$id$orig_h,
@@ -185,7 +180,6 @@ event http_request(c: connection, method: string, original_URI: string, unescape
     if ( c$id$resp_h in suspicious_ips )
         {
         local ip_msg = fmt("检测到访问可疑 IP: %s", c$id$resp_h);
-        print(fmt("ALERT: %s", ip_msg));
         NOTICE([$note=Suspicious_File_Modification,
                 $msg=ip_msg,
                 $src=c$id$orig_h,
@@ -198,7 +192,6 @@ event http_request(c: connection, method: string, original_URI: string, unescape
         if ( ends_with(unescaped_URI, ext) )
             {
             local ext_msg = fmt("检测到下载可疑文件类型: %s", unescaped_URI);
-            print(fmt("ALERT: %s", ext_msg));
             NOTICE([$note=Suspicious_File_Modification,
                     $msg=ext_msg,
                     $src=c$id$orig_h,
@@ -212,7 +205,6 @@ event http_request(c: connection, method: string, original_URI: string, unescape
         if ( unescaped_URI == filename || ends_with(unescaped_URI, "/" + filename) )
             {
             local filename_msg = fmt("检测到下载可疑文件名: %s", unescaped_URI);
-            print(fmt("ALERT: %s", filename_msg));
             NOTICE([$note=Suspicious_File_Modification,
                     $msg=filename_msg,
                     $src=c$id$orig_h,
@@ -351,8 +343,4 @@ event zeek_init()
     # 初始化文件修改时间表
     file_modification_times = { };
     
-    # 输出初始化信息
-    print("FileTampering detection initialized");
-    print("Monitoring critical files and directories...");
-    print("Monitoring suspicious domains and IPs...");
 }

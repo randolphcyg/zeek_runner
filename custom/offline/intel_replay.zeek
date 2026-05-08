@@ -16,6 +16,7 @@ global pending_indicators: set[string, Intel::Type, Intel::Where] = set();
 global feed_files_total: count = 0;
 global feed_files_loaded: count = 0;
 global feeds_ready = F;
+global pcap_done = F;
 global replay_done = F;
 global terminate_scheduled = F;
 
@@ -47,13 +48,33 @@ function replay_pending_observables()
         }
     }
 
+function finish_replay_if_ready()
+    {
+    if ( ! replay_enabled || ! feeds_ready || ! pcap_done )
+        return;
+
+    replay_pending_observables();
+
+    if ( ! terminate_scheduled )
+        {
+        terminate_scheduled = T;
+        terminate();
+        }
+    }
+
 event zeek_init()
     {
     if ( ! replay_enabled )
         return;
 
     feed_files_total = |Intel::read_files|;
-    print fmt("offline intel replay waiting for %d intel files", feed_files_total);
+
+    if ( feed_files_total == 0 )
+        {
+        feeds_ready = T;
+        finish_replay_if_ready();
+        return;
+        }
     }
 
 event connection_established(c: connection)
@@ -127,11 +148,14 @@ event Input::end_of_data(name: string, source: string)
         return;
 
     feeds_ready = T;
-    replay_pending_observables();
+    finish_replay_if_ready();
+    }
 
-    if ( ! terminate_scheduled )
-        {
-        terminate_scheduled = T;
-        terminate();
-        }
+event Pcap::file_done(path: string)
+    {
+    if ( ! replay_enabled )
+        return;
+
+    pcap_done = T;
+    finish_replay_if_ready();
     }

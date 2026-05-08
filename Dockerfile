@@ -90,13 +90,16 @@ COPY --from=go-builder /app/zeek_runner /app/
 
 RUN mkdir -p /usr/local/zeek/share/zeek/base/custom
 COPY ./custom/ /usr/local/zeek/share/zeek/base/custom/
+COPY ./scripts/sanitize_zeek_intel_feeds.sh /usr/local/bin/sanitize_zeek_intel_feeds.sh
 
 # Zeek-Intelligence-Feeds
 RUN cd /usr/local/zeek/share/zeek/site && \
     git clone https://github.com/CriticalPathSecurity/Zeek-Intelligence-Feeds.git && \
     sed -i "/abuse-ja3-fingerprints\\.intel/d" /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds/main.zeek && \
     sed -i "/salesforce-ja3-fingerprints\\.intel/d" /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds/main.zeek && \
-    sed -i "s|lockbit\\.intel|lockbit_ip.intel|g" /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds/main.zeek
+    sed -i "s|lockbit\\.intel|lockbit_ip.intel|g" /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds/main.zeek && \
+    chmod +x /usr/local/bin/sanitize_zeek_intel_feeds.sh && \
+    /usr/local/bin/sanitize_zeek_intel_feeds.sh /usr/local/zeek/share/zeek/site/Zeek-Intelligence-Feeds
 
 RUN echo "@load base/custom" >> /usr/local/zeek/share/zeek/base/init-default.zeek
 

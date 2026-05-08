@@ -73,8 +73,9 @@ message VersionCheckResponse {
 }
 
 message ZeekSyntaxCheckRequest {
-  string script_path = 1;      // 脚本路径
-  string script_content = 2;   // 脚本内容
+  string scriptID = 1;         // 脚本ID
+  string scriptPath = 2;       // 脚本路径
+  string scriptContent = 3;    // 脚本内容
 }
 
 message ZeekSyntaxCheckResponse {
@@ -180,6 +181,45 @@ message ParentTaskStatusResponse {
   int32 intelCount = 12;       // 所有子任务intel日志总数
 }
 
+message ListScriptsRequest {
+  string name = 1;
+  bool enabledOnly = 2;
+}
+
+message ScriptInfo {
+  string scriptID = 1;
+  string scriptName = 2;
+  string scriptPath = 3;
+  string expCodeType = 4;
+  string size = 5;
+  string behaviorType = 6;
+  string behaviorCategory = 7;
+  string description = 8;
+  string attackFeature = 9;
+  string checksum = 10;
+  string updatedAt = 11;
+  bool enabled = 12;
+  bool valid = 13;
+  string error = 14;
+}
+
+message ListScriptsResponse {
+  repeated ScriptInfo scripts = 1;
+}
+
+message GetScriptRequest {
+  string scriptID = 1;
+}
+
+message ReloadScriptsRequest {}
+
+message ReloadScriptsResponse {
+  int32 total = 1;
+  int32 valid = 2;
+  int32 invalid = 3;
+  repeated ScriptInfo scripts = 4;
+}
+
 // gRPC服务定义
 service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
@@ -191,4 +231,7 @@ service ZeekAnalysisService {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
   rpc VersionCheck(VersionCheckRequest) returns (VersionCheckResponse) {}
   rpc ZeekSyntaxCheck(ZeekSyntaxCheckRequest) returns (ZeekSyntaxCheckResponse) {}
+  rpc ListScripts(ListScriptsRequest) returns (ListScriptsResponse) {}
+  rpc GetScript(GetScriptRequest) returns (ScriptInfo) {}
+  rpc ReloadScripts(ReloadScriptsRequest) returns (ReloadScriptsResponse) {}
 }

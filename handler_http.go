@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,7 +37,7 @@ func (h *HTTPHandler) HandleAnalysis(c *gin.Context) {
 
 	resp, err := h.service.ExecuteTaskInPool(c.Request.Context(), req)
 	if err != nil {
-		code := http.StatusInternalServerError
+		code := httpCodeFromError(err)
 		if strings.Contains(err.Error(), "pool full") {
 			code = http.StatusServiceUnavailable
 		}
@@ -84,7 +85,7 @@ func (h *HTTPHandler) HandleAsyncAnalysis(c *gin.Context) {
 
 	task, err := h.service.SubmitAsyncTask(c.Request.Context(), req)
 	if err != nil {
-		code := http.StatusInternalServerError
+		code := httpCodeFromError(err)
 		if strings.Contains(err.Error(), "pool full") {
 			code = http.StatusServiceUnavailable
 		}
@@ -153,6 +154,7 @@ func (h *HTTPHandler) HandleTaskStatus(c *gin.Context) {
 }
 
 type SyntaxCheckReq struct {
+	ScriptID      string `json:"scriptID"`
 	ScriptPath    string `json:"scriptPath"`
 	ScriptContent string `json:"scriptContent"`
 }
@@ -164,7 +166,7 @@ type SyntaxCheckResult struct {
 
 func doSyntaxCheck(scriptPath, scriptContent string) (*SyntaxCheckResult, error) {
 	if scriptPath == "" && scriptContent == "" {
-		return nil, errors.New("script_path or script_content is required")
+		return nil, errors.New("scriptID, scriptPath, or scriptContent is required")
 	}
 
 	var inputPath string
@@ -216,7 +218,13 @@ func (h *HTTPHandler) HandleSyntaxCheck(c *gin.Context) {
 		return
 	}
 
-	result, err := doSyntaxCheck(req.ScriptPath, req.ScriptContent)
+	scriptPath, err := h.resolveSyntaxCheckPath(req)
+	if err != nil {
+		response(c, httpCodeFromError(err), err.Error(), nil)
+		return
+	}
+
+	result, err := doSyntaxCheck(scriptPath, req.ScriptContent)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			response(c, http.StatusNotFound, err.Error(), nil)
@@ -230,6 +238,67 @@ func (h *HTTPHandler) HandleSyntaxCheck(c *gin.Context) {
 		"valid": result.Valid,
 		"error": result.Error,
 	})
+}
+
+func (h *HTTPHandler) resolveSyntaxCheckPath(req SyntaxCheckReq) (string, error) {
+	if req.ScriptContent != "" {
+		return "", nil
+	}
+	if req.ScriptID != "" {
+		script, err := h.service.ResolveManagedScript(req.ScriptID, "")
+		if err != nil {
+			return "", err
+		}
+		return script.ScriptPath, nil
+	}
+	if req.ScriptPath != "" {
+		return req.ScriptPath, nil
+	}
+	return "", errors.New("scriptID, scriptPath, or scriptContent is required")
+}
+
+func (h *HTTPHandler) HandleListScripts(c *gin.Context) {
+	enabledOnly, _ := strconv.ParseBool(c.Query("enabledOnly"))
+	success(c, gin.H{
+		"scripts": h.service.ListScripts(ListScriptsRequest{
+			Name:        c.Query("name"),
+			EnabledOnly: enabledOnly,
+		}),
+	})
+}
+
+func (h *HTTPHandler) HandleGetScript(c *gin.Context) {
+	script, err := h.service.GetScript(c.Param("scriptID"))
+	if err != nil {
+		response(c, httpCodeFromError(err), err.Error(), nil)
+		return
+	}
+	success(c, script)
+}
+
+func (h *HTTPHandler) HandleReloadScripts(c *gin.Context) {
+	resp, err := h.service.ReloadScripts()
+	if err != nil {
+		response(c, http.StatusInternalServerError, err.Error(), err)
+		return
+	}
+	success(c, resp)
+}
+
+func httpCodeFromError(err error) int {
+	switch {
+	case errors.Is(err, ErrScriptNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, ErrScriptInvalid):
+		return http.StatusBadRequest
+	case strings.Contains(err.Error(), "scriptPath mismatch"),
+		strings.Contains(err.Error(), "required"),
+		strings.Contains(err.Error(), "missing"),
+		strings.Contains(err.Error(), "invalid"):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (h *HTTPHandler) CmdHandler(name string, args ...string) gin.HandlerFunc {

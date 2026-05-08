@@ -1,1 +1,1 @@
-@load ./profiles/offline
+@load ./profiles/malicious_default

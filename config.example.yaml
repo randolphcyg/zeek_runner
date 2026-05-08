@@ -25,6 +25,10 @@ zeek:
   extractPath: "/opt/zeek_runner/extracted"  # 文件提取保存路径
   minSizeKB: 20                              # 最小提取文件大小 (KB)
   maxSizeMB: 200                             # 最大提取文件大小 (MB)
+  scriptRoot: "/opt/zeek_runner/scripts"     # 托管检测脚本目录
+  autoReloadScripts: true                    # 自动监听脚本变更并重载
+  scriptReloadDebounce: "2s"                 # 文件事件合并等待时间
+  scriptReloadInterval: "60s"                # 定时兜底重扫间隔
   
 pool:
   size: 8

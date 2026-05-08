@@ -6,6 +6,7 @@ const SCRIPT_ID = "DETECT_DNS_FLOOD_v1";
 # 行为类型：DNS洪水攻击/放大攻击
 # 行为分类：拒绝服务攻击(DoS)
 # 行为描述：检测高频DNS查询、响应风暴及ANY类型放大攻击特征
+# 攻击特征：高频DNS查询或响应集中爆发，包含ANY查询放大、响应风暴等拒绝服务流量形态
 
 @load base/frameworks/notice
 @load base/frameworks/sumstats
@@ -15,9 +16,9 @@ module DNS_DDoS;
 
 export {
     redef enum Notice::Type += { DNS_Query_Flood, DNS_Response_Flood, DNS_Amplification_ANY };
-    const FLOOD_THRESHOLD: double = 5.0; # 调试阈值
-    const ANY_THRESHOLD: double = 2.0;   # 调试阈值
-    const CHECK_INTERVAL: interval = 5sec;
+    const FLOOD_THRESHOLD: double = 100.0 &redef;
+    const ANY_THRESHOLD: double = 20.0 &redef;
+    const CHECK_INTERVAL: interval = 10sec &redef;
 }
 
 event zeek_init() {

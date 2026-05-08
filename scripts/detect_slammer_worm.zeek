@@ -6,6 +6,7 @@ const SCRIPT_ID = "DETECT_SLAMMER_v1";
 # 行为类型：SQL Slammer蠕虫/UDP Flood
 # 行为分类：蠕虫病毒/拒绝服务
 # 行为描述：检测针对UDP1434端口的异常流量，识别Slammer蠕虫的经典特征
+# 攻击特征：针对UDP 1434端口出现高频小包传播流量，符合SQL Slammer蠕虫扫描与扩散行为
 
 @load base/frameworks/notice
 

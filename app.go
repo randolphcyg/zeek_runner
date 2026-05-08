@@ -21,6 +21,10 @@ type App struct {
 
 	kafkaReady    bool
 	kafkaReadyMux sync.RWMutex
+
+	appCtx                 context.Context
+	scriptAutoReloadCancel context.CancelFunc
+	scriptAutoReloadMux    sync.Mutex
 }
 
 func NewApp() (*App, error) {
@@ -111,6 +115,7 @@ func (a *App) Start(ctx context.Context) {
 
 	if a.Service != nil {
 		a.Service.StartTaskConsumer(ctx)
+		a.startScriptAutoReload(ctx)
 	}
 }
 
@@ -128,6 +133,8 @@ func (a *App) Shutdown(ctx context.Context) error {
 		a.FileDedupMgr.Close()
 	}
 
+	a.stopScriptAutoReload()
+
 	if a.Service != nil {
 		_ = a.Service.Close()
 	}
@@ -143,10 +150,65 @@ func (a *App) ReloadConfig() {
 	if oldCfg.RateLimit.Limit != a.Config.RateLimit.Limit || oldCfg.RateLimit.Window != a.Config.RateLimit.Window {
 		a.RateLimiter.UpdateLimit(a.Config.RateLimit.Limit, time.Duration(a.Config.RateLimit.Window)*time.Second)
 	}
+	if a.Service != nil && oldCfg.Zeek.ScriptRoot != a.Config.Zeek.ScriptRoot {
+		if _, err := a.Service.ReloadScripts(); err != nil {
+			slog.Warn("script registry reload failed after config reload", "err", err)
+		}
+	}
+	if a.Service != nil && scriptAutoReloadConfigChanged(oldCfg.Zeek, a.Config.Zeek) {
+		a.restartScriptAutoReload()
+	}
 
 	slog.Info("App config reloaded",
 		"rate_limit", a.Config.RateLimit.Limit,
 		"rate_limit_window", a.Config.RateLimit.Window,
 		"tokens_count", len(a.Config.HTTP.AuthTokens),
 	)
+}
+
+func (a *App) startScriptAutoReload(ctx context.Context) {
+	a.scriptAutoReloadMux.Lock()
+	defer a.scriptAutoReloadMux.Unlock()
+
+	a.appCtx = ctx
+	a.startScriptAutoReloadLocked(ctx)
+}
+
+func (a *App) restartScriptAutoReload() {
+	a.scriptAutoReloadMux.Lock()
+	defer a.scriptAutoReloadMux.Unlock()
+
+	if a.scriptAutoReloadCancel != nil {
+		a.scriptAutoReloadCancel()
+		a.scriptAutoReloadCancel = nil
+	}
+	if a.appCtx != nil {
+		a.startScriptAutoReloadLocked(a.appCtx)
+	}
+}
+
+func (a *App) stopScriptAutoReload() {
+	a.scriptAutoReloadMux.Lock()
+	defer a.scriptAutoReloadMux.Unlock()
+
+	if a.scriptAutoReloadCancel != nil {
+		a.scriptAutoReloadCancel()
+		a.scriptAutoReloadCancel = nil
+	}
+}
+
+func (a *App) startScriptAutoReloadLocked(parent context.Context) {
+	if a.Service == nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(parent)
+	a.scriptAutoReloadCancel = cancel
+	a.Service.StartScriptAutoReload(ctx)
+}
+
+func scriptAutoReloadConfigChanged(oldCfg, newCfg ZeekConfig) bool {
+	return oldCfg.ScriptRoot != newCfg.ScriptRoot ||
+		oldCfg.AutoReloadScripts != newCfg.AutoReloadScripts ||
+		oldCfg.ScriptReloadDebounce != newCfg.ScriptReloadDebounce ||
+		oldCfg.ScriptReloadInterval != newCfg.ScriptReloadInterval
 }

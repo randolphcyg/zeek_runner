@@ -96,26 +96,58 @@ func writeKafkaMessage(ctx context.Context, writer *kafka.Writer, brokers string
 		return nil
 	}
 
-	err := writer.WriteMessages(ctx, msg)
-	if !isUnknownTopicOrPartition(err) {
-		return err
-	}
+	var lastErr error
+	for attempt := 1; attempt <= 12; attempt++ {
+		err := writer.WriteMessages(ctx, msg)
+		if err == nil {
+			return nil
+		}
 
-	if ensureErr := ensureKafkaTopic(ctx, brokers, topic); ensureErr != nil {
-		return errors.Join(err, ensureErr)
-	}
+		if isUnknownTopicOrPartition(err) {
+			if ensureErr := ensureKafkaTopic(ctx, brokers, topic); ensureErr != nil {
+				lastErr = errors.Join(err, ensureErr)
+			} else {
+				lastErr = err
+			}
 
-	lastErr := err
-	for range 5 {
+			for range 5 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(300 * time.Millisecond):
+				}
+
+				lastErr = writer.WriteMessages(ctx, msg)
+				if lastErr == nil {
+					return nil
+				}
+				if !isUnknownTopicOrPartition(lastErr) {
+					break
+				}
+			}
+		} else {
+			lastErr = err
+		}
+
+		if attempt == 12 {
+			return lastErr
+		}
+
+		delay := time.Duration(attempt) * 500 * time.Millisecond
+		if delay > 5*time.Second {
+			delay = 5 * time.Second
+		}
+		slog.Warn("Kafka write failed, retrying",
+			"topic", topic,
+			"attempt", attempt,
+			"delay", delay.String(),
+			"err", lastErr,
+		)
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(300 * time.Millisecond):
-		}
-
-		lastErr = writer.WriteMessages(ctx, msg)
-		if !isUnknownTopicOrPartition(lastErr) {
-			return lastErr
+		case <-time.After(delay):
 		}
 	}
 
