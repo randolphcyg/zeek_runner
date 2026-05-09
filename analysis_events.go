@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -446,6 +447,24 @@ func normalizeParentEventStatus(status *ParentTaskStatus) string {
 	return "success"
 }
 
+func shouldPublishParentAnalysisEvent(status *ParentTaskStatus) bool {
+	if status == nil || len(status.SubTasks) == 0 {
+		return true
+	}
+
+	hasTask := false
+	for _, task := range status.SubTasks {
+		if task == nil {
+			continue
+		}
+		hasTask = true
+		if task.OutputDir == "" && task.ScriptID != extractTaskScriptID {
+			return true
+		}
+	}
+	return !hasTask
+}
+
 func (s *Service) publishParentEventIfReady(ctx context.Context, taskID string) {
 	if s == nil || s.analysisPublisher == nil || s.taskManager == nil || taskID == "" {
 		return
@@ -456,6 +475,12 @@ func (s *Service) publishParentEventIfReady(ctx context.Context, taskID string) 
 		return
 	}
 	if status.PendingCount > 0 || status.RunningCount > 0 {
+		return
+	}
+
+	if !shouldPublishParentAnalysisEvent(status) {
+		_, _ = s.taskManager.MarkParentEventPublished(ctx, taskID)
+		slog.Debug("skip parent analysis event for file extract task", "taskID", taskID)
 		return
 	}
 

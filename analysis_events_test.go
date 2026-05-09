@@ -114,3 +114,50 @@ func TestPublishSubtaskEvent_CompletedAndFailedEventIDs(t *testing.T) {
 		t.Fatalf("expected different event ids for different terminal event types")
 	}
 }
+
+func TestShouldPublishParentAnalysisEvent_SkipsFileExtractParents(t *testing.T) {
+	tests := []struct {
+		name   string
+		status *ParentTaskStatus
+		want   bool
+	}{
+		{
+			name: "file extract by output dir",
+			status: &ParentTaskStatus{SubTasks: []*Task{{
+				TaskID:    "task-extract",
+				ScriptID:  extractTaskScriptID,
+				OutputDir: "/tmp/extract",
+			}}},
+			want: false,
+		},
+		{
+			name: "file extract by script id",
+			status: &ParentTaskStatus{SubTasks: []*Task{{
+				TaskID:   "task-extract",
+				ScriptID: extractTaskScriptID,
+			}}},
+			want: false,
+		},
+		{
+			name: "malicious scan",
+			status: &ParentTaskStatus{SubTasks: []*Task{{
+				TaskID:   "task-scan",
+				ScriptID: "DETECT_HTTP_FLOOD_v1",
+			}}},
+			want: true,
+		},
+		{
+			name:   "unknown parent remains publishable",
+			status: &ParentTaskStatus{},
+			want:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldPublishParentAnalysisEvent(tt.status); got != tt.want {
+				t.Fatalf("shouldPublishParentAnalysisEvent() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
