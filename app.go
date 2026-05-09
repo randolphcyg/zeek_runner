@@ -115,6 +115,7 @@ func (a *App) Start(ctx context.Context) {
 
 	if a.Service != nil {
 		a.Service.StartTaskConsumer(ctx)
+		a.Service.StartKafkaOutboxFlusher(ctx)
 		a.startScriptAutoReload(ctx)
 	}
 }

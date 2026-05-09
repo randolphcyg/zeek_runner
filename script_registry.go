@@ -17,13 +17,16 @@ import (
 const scriptExpCodeType = "zeek"
 
 var (
-	scriptIDPattern = regexp.MustCompile(`(?m)^\s*const\s+SCRIPT_ID\s*=\s*"([^"]+)"\s*;?`)
-	metaPatterns    = map[string]*regexp.Regexp{
+	commentScriptIDPattern    = regexp.MustCompile(`(?m)^\s*#\s*SCRIPT_ID\s*:\s*([A-Za-z0-9_.:-]+)\s*(?:#.*)?$`)
+	legacyScriptIDPattern     = regexp.MustCompile(`(?m)^\s*const\s+SCRIPT_ID\s*=\s*"([^"]+)"\s*;?`)
+	commentNoticeTypesPattern = regexp.MustCompile(`(?m)^\s*#\s*NoticeTypes\s*:\s*(.+?)\s*$`)
+	metaPatterns              = map[string]*regexp.Regexp{
 		"behaviorType":     regexp.MustCompile(`(?m)^\s*#\s*行为类型：\s*(.+?)\s*$`),
 		"behaviorCategory": regexp.MustCompile(`(?m)^\s*#\s*行为分类：\s*(.+?)\s*$`),
 		"description":      regexp.MustCompile(`(?m)^\s*#\s*行为描述：\s*(.+?)\s*$`),
 		"attackFeature":    regexp.MustCompile(`(?m)^\s*#\s*攻击特征：\s*(.+?)\s*$`),
 	}
+	noticeTypePattern = regexp.MustCompile(`(?m)redef\s+enum\s+Notice::Type\s*\+=\s*\{\s*([^}]+?)\s*\}`)
 )
 
 var (
@@ -37,20 +40,21 @@ type ListScriptsRequest struct {
 }
 
 type ScriptInfo struct {
-	ScriptID         string `json:"scriptID"`
-	ScriptName       string `json:"scriptName"`
-	ScriptPath       string `json:"scriptPath"`
-	ExpCodeType      string `json:"expCodeType"`
-	Size             string `json:"size"`
-	BehaviorType     string `json:"behaviorType"`
-	BehaviorCategory string `json:"behaviorCategory"`
-	Description      string `json:"description"`
-	AttackFeature    string `json:"attackFeature"`
-	Checksum         string `json:"checksum"`
-	UpdatedAt        string `json:"updatedAt"`
-	Enabled          bool   `json:"enabled"`
-	Valid            bool   `json:"valid"`
-	Error            string `json:"error"`
+	ScriptID         string   `json:"scriptID"`
+	ScriptName       string   `json:"scriptName"`
+	ScriptPath       string   `json:"scriptPath"`
+	ExpCodeType      string   `json:"expCodeType"`
+	Size             string   `json:"size"`
+	BehaviorType     string   `json:"behaviorType"`
+	BehaviorCategory string   `json:"behaviorCategory"`
+	Description      string   `json:"description"`
+	AttackFeature    string   `json:"attackFeature"`
+	NoticeTypes      []string `json:"noticeTypes"`
+	Checksum         string   `json:"checksum"`
+	UpdatedAt        string   `json:"updatedAt"`
+	Enabled          bool     `json:"enabled"`
+	Valid            bool     `json:"valid"`
+	Error            string   `json:"error"`
 }
 
 type ReloadScriptsResponse struct {
@@ -220,8 +224,8 @@ func parseScriptInfo(path string) (ScriptInfo, error) {
 		Valid:       true,
 	}
 
-	if match := scriptIDPattern.FindStringSubmatch(content); len(match) == 2 {
-		script.ScriptID = strings.TrimSpace(match[1])
+	if scriptID := extractScriptID(content); scriptID != "" {
+		script.ScriptID = scriptID
 	} else {
 		script.Valid = false
 		script.Enabled = false
@@ -232,8 +236,64 @@ func parseScriptInfo(path string) (ScriptInfo, error) {
 	script.BehaviorCategory = extractScriptMetadata(content, "behaviorCategory")
 	script.Description = extractScriptMetadata(content, "description")
 	script.AttackFeature = extractScriptMetadata(content, "attackFeature")
+	script.NoticeTypes = extractNoticeTypes(content)
 
 	return script, nil
+}
+
+func extractScriptID(content string) string {
+	if match := commentScriptIDPattern.FindStringSubmatch(content); len(match) == 2 {
+		return strings.TrimSpace(match[1])
+	}
+	if match := legacyScriptIDPattern.FindStringSubmatch(content); len(match) == 2 {
+		return strings.TrimSpace(match[1])
+	}
+	return ""
+}
+
+func extractNoticeTypes(content string) []string {
+	if match := commentNoticeTypesPattern.FindStringSubmatch(content); len(match) == 2 {
+		return parseNoticeTypeList(match[1])
+	}
+
+	matches := noticeTypePattern.FindAllStringSubmatch(content, -1)
+	var result []string
+	seen := map[string]bool{}
+	for _, match := range matches {
+		if len(match) != 2 {
+			continue
+		}
+		for _, part := range parseNoticeTypeList(match[1]) {
+			if part == "" || seen[part] {
+				continue
+			}
+			seen[part] = true
+			result = append(result, part)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func parseNoticeTypeList(value string) []string {
+	var result []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(value, "\n") {
+		if idx := strings.Index(line, "#"); idx >= 0 {
+			line = line[:idx]
+		}
+		for _, part := range strings.Split(line, ",") {
+			part = strings.TrimSpace(part)
+			part = strings.Trim(part, "{}; \t\r\n")
+			if part == "" || seen[part] {
+				continue
+			}
+			seen[part] = true
+			result = append(result, part)
+		}
+	}
+	sort.Strings(result)
+	return result
 }
 
 func extractScriptMetadata(content, key string) string {

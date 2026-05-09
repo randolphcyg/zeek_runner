@@ -82,18 +82,27 @@ func (s *GRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest
 			redisReady = false
 		}
 	}
+	snapshot := s.service.resourceSnapshot(ctx)
 
 	return &pb.HealthCheckResponse{
-		Status:       statusMsg,
-		PoolRunning:  int32(s.app.TaskPool.Running()),
-		PoolCapacity: int32(cfg.Pool.Size),
-		KafkaReady:   s.app.IsKafkaReady(),
-		RedisReady:   redisReady,
-		Timestamp:    time.Now().Format(time.RFC3339),
-		Version:      Version,
-		GoVersion:    runtime.Version(),
-		Os:           runtime.GOOS,
-		Arch:         runtime.GOARCH,
+		Status:           statusMsg,
+		PoolRunning:      int32(s.app.TaskPool.Running()),
+		PoolCapacity:     int32(cfg.Pool.Size),
+		KafkaReady:       s.app.IsKafkaReady(),
+		RedisReady:       redisReady,
+		Timestamp:        time.Now().Format(time.RFC3339),
+		Version:          Version,
+		GoVersion:        runtime.Version(),
+		Os:               runtime.GOOS,
+		Arch:             runtime.GOARCH,
+		QueuePending:     snapshot.QueuePending,
+		WeightedRunning:  int32(snapshot.WeightedRunning),
+		WeightedCapacity: int32(snapshot.WeightedCapacity),
+		CpuUsage:         snapshot.CPUUsage,
+		MemUsage:         snapshot.MemUsage,
+		DiskIoBusy:       snapshot.DiskIOBusy,
+		KafkaLag:         snapshot.KafkaLag,
+		AcceptingJobs:    snapshot.AcceptingJobs,
 	}, nil
 }
 
@@ -170,6 +179,23 @@ func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeReque
 		Uuid:       task.UUID,
 		Status:     string(task.Status),
 		CreateTime: task.CreateTime.Format(time.RFC3339),
+	}, nil
+}
+
+func (s *GRPCServer) AsyncAnalyzeBatch(ctx context.Context, req *pb.AsyncAnalyzeBatchRequest) (*pb.AsyncAnalyzeBatchResponse, error) {
+	ar := asyncAnalyzeBatchReqFromGRPC(req)
+	tasks, err := s.service.SubmitAsyncBatchTask(ctx, ar)
+	if err != nil {
+		if strings.Contains(err.Error(), "Redis required") {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, grpcStatusFromError(err)
+	}
+	return &pb.AsyncAnalyzeBatchResponse{
+		TaskID:        req.TaskID,
+		AcceptedCount: int32(len(tasks)),
+		RejectedCount: int32(len(req.Scripts) - len(tasks)),
+		Status:        "pending",
 	}, nil
 }
 
@@ -317,6 +343,7 @@ func scriptInfoToPB(script ScriptInfo) *pb.ScriptInfo {
 		Enabled:          script.Enabled,
 		Valid:            script.Valid,
 		Error:            script.Error,
+		NoticeTypes:      script.NoticeTypes,
 	}
 }
 
@@ -356,6 +383,26 @@ func asyncAnalyzeReqFromGRPC(req *pb.AsyncAnalyzeRequest) AnalyzeReq {
 		PcapPath:   req.PcapPath,
 		ScriptID:   req.ScriptID,
 		ScriptPath: req.ScriptPath,
+	}
+}
+
+func asyncAnalyzeBatchReqFromGRPC(req *pb.AsyncAnalyzeBatchRequest) AnalyzeBatchReq {
+	scripts := make([]ScriptTaskReq, 0, len(req.Scripts))
+	for _, script := range req.Scripts {
+		scripts = append(scripts, ScriptTaskReq{
+			UUID:       script.Uuid,
+			ScriptID:   script.ScriptID,
+			ScriptPath: script.ScriptPath,
+			RunMode:    script.RunMode,
+			Weight:     int(script.Weight),
+		})
+	}
+	return AnalyzeBatchReq{
+		TaskID:     req.TaskID,
+		OnlyNotice: req.OnlyNotice,
+		PcapID:     req.PcapID,
+		PcapPath:   req.PcapPath,
+		Scripts:    scripts,
 	}
 }
 

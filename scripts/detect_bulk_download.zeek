@@ -1,5 +1,5 @@
-# 脚本唯一标识符 - 不要修改此ID
-const SCRIPT_ID = "DETECT_BULK_DOWNLOAD_v1";
+# SCRIPT_ID: DETECT_BULK_DOWNLOAD_v1
+# NoticeTypes: BulkDownload::Bulk_File_Download, BulkDownload::High_Volume_Download
 
 # 恶意行为检测脚本配置
 # 行为类型：批量下载恶意文件

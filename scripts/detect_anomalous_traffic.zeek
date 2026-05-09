@@ -1,5 +1,5 @@
-# 脚本唯一标识符 - 不要修改此ID
-const SCRIPT_ID = "DETECT_ANOMALOUS_TRAFFIC_v1";
+# SCRIPT_ID: DETECT_ANOMALOUS_TRAFFIC_v1
+# NoticeTypes: AnomalousTraffic::Anomalous_Traffic_Detected
 
 # 恶意行为检测脚本配置
 # 行为类型：异常网络流量

@@ -103,6 +103,27 @@ func MergeConfigWithEnv(fileCfg *Config, envCfg *Config) *Config {
 	if fileCfg.Pool.TimeoutMinutes > 0 && os.Getenv("ZEEK_TIMEOUT_MINUTES") == "" {
 		result.Pool.TimeoutMinutes = fileCfg.Pool.TimeoutMinutes
 	}
+	if fileCfg.Scheduler.WeightedCapacity > 0 && os.Getenv("ZEEK_WEIGHTED_CAPACITY") == "" {
+		result.Scheduler.WeightedCapacity = fileCfg.Scheduler.WeightedCapacity
+	}
+	if fileCfg.Scheduler.MaxClaimBatch > 0 && os.Getenv("ZEEK_MAX_CLAIM_BATCH") == "" {
+		result.Scheduler.MaxClaimBatch = fileCfg.Scheduler.MaxClaimBatch
+	}
+	if fileCfg.Scheduler.LeaseTimeout != "" && os.Getenv("ZEEK_LEASE_TIMEOUT") == "" {
+		result.Scheduler.LeaseTimeout = fileCfg.Scheduler.LeaseTimeout
+	}
+	if fileCfg.Scheduler.KafkaLagHighWatermark > 0 && os.Getenv("ZEEK_KAFKA_LAG_HIGH_WATERMARK") == "" {
+		result.Scheduler.KafkaLagHighWatermark = fileCfg.Scheduler.KafkaLagHighWatermark
+	}
+	if fileCfg.Scheduler.MinFreeDiskPercent > 0 && os.Getenv("ZEEK_MIN_FREE_DISK_PERCENT") == "" {
+		result.Scheduler.MinFreeDiskPercent = fileCfg.Scheduler.MinFreeDiskPercent
+	}
+	if fileCfg.Batch.Enabled && os.Getenv("ZEEK_BATCH_ENABLED") == "" {
+		result.Batch.Enabled = fileCfg.Batch.Enabled
+	}
+	if fileCfg.Batch.MaxScriptsPerZeekRun > 0 && os.Getenv("ZEEK_BATCH_MAX_SCRIPTS_PER_RUN") == "" {
+		result.Batch.MaxScriptsPerZeekRun = fileCfg.Batch.MaxScriptsPerZeekRun
+	}
 
 	if fileCfg.RateLimit.Limit > 0 && os.Getenv("RATE_LIMIT") == "" {
 		result.RateLimit.Limit = fileCfg.RateLimit.Limit

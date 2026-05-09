@@ -14,26 +14,22 @@ redis:
 
 kafka:
   brokers: "192.168.x.xx:9092"
-  topic: "zeek_logs"
 
-otel:
-  enabled: false
-  endpoint: "192.168.x.xx:14317"
-
-zeek:
-  baseWaitTimeMs: 10000                      # zeek等待Kafka消息的最大时间，单位毫秒
-  extractPath: "/opt/zeek_runner/extracted"  # 文件提取保存路径
-  minSizeKB: 20                              # 最小提取文件大小 (KB)
-  maxSizeMB: 200                             # 最大提取文件大小 (MB)
-  scriptRoot: "/opt/zeek_runner/scripts"     # 托管检测脚本目录
-  autoReloadScripts: true                    # 自动监听脚本变更并重载
-  scriptReloadDebounce: "2s"                 # 文件事件合并等待时间
-  scriptReloadInterval: "60s"                # 定时兜底重扫间隔
-  
 pool:
-  size: 8
-  maxBlocking: 10000
-  timeoutMinutes: 10
+  size: 30                                    # 本地 worker 池容量
+  maxBlocking: 10000                          # worker 池阻塞提交上限
+  timeoutMinutes: 10                          # 单个 Zeek 执行超时时间(分钟)
+
+scheduler:
+  weightedCapacity: 30                        # 副本可同时运行的资源权重容量，按 pcap 大小和脚本权重扣减
+  maxClaimBatch: 1                            # 单轮从 Redis Stream 主动拉取的 batch job 数量
+  leaseTimeout: "10m"                         # Redis Stream pending 任务可被其他副本 reclaim 的最小空闲时间
+  kafkaLagHighWatermark: 0                    # Kafka lag 背压阈值，0 表示不因 lag 停止领取任务
+  minFreeDiskPercent: 5                       # 磁盘剩余空间低于该百分比时停止领取新任务
+
+batch:
+  enabled: true                               # 同一 pcap 的可归因脚本合并为一次 Zeek batch 执行
+  maxScriptsPerZeekRun: 16                    # 单次 Zeek batch 最多加载的检测脚本数
 
 rateLimit:
   limit: 2000
@@ -56,3 +52,16 @@ grpc:
   enableHealthCheck: true
   authTokens:
     - "your-token-here"
+
+zeek:
+  extractPath: "/opt/zeek_runner/extracted"   # 文件提取保存路径
+  minSizeKB: 20                               # 最小提取文件大小 (KB)
+  maxSizeMB: 200                              # 最大提取文件大小 (MB)
+  scriptRoot: "/opt/zeek_runner/scripts"      # 检测脚本目录
+  autoReloadScripts: true                     # 自动监听托管脚本变更并重载脚本元数据
+  scriptReloadDebounce: "2s"                  # 文件事件合并等待时间
+  scriptReloadInterval: "60s"                 # 定时兜底重扫间隔
+
+otel:
+  enabled: false
+  endpoint: "192.168.x.xx:14317"

@@ -53,6 +53,7 @@ type analysisSubtaskHitEvent struct {
 	DstIp        string `json:"dstIp"`
 	DstPort      int    `json:"dstPort"`
 	Proto        string `json:"proto"`
+	UID          string `json:"uid"`
 }
 
 type analysisSubtaskEvent struct {
@@ -286,6 +287,7 @@ func parseNoticeLog(path string) ([]analysisSubtaskHitEvent, error) {
 			DstIp:      recordValue(record, "id.resp_h"),
 			DstPort:    parsePort(recordValue(record, "id.resp_p")),
 			Proto:      recordValue(record, "proto"),
+			UID:        recordValue(record, "uid"),
 		})
 	}
 	return hits, nil
@@ -339,6 +341,7 @@ func (s *Service) publishSubtaskHitEvents(ctx context.Context, opts zeekRunOptio
 			hit.SourceType,
 			hit.RuleType,
 			hit.Indicator,
+			hit.UID,
 			hit.SrcIp,
 			strconv.Itoa(hit.SrcPort),
 			hit.DstIp,
@@ -358,7 +361,7 @@ func (s *Service) publishSubtaskHitEvents(ctx context.Context, opts zeekRunOptio
 		hit.ScriptID = opts.scriptID
 		hit.ScriptPath = opts.scriptPath
 		hit.Verdict = "malicious"
-		return s.analysisPublisher.Publish(ctx, opts.taskID, "subtask_hit", hit)
+		return s.publishAnalysisEvent(ctx, opts.taskID, "subtask_hit", hit)
 	}
 
 	for _, hit := range noticeHits {
@@ -424,7 +427,7 @@ func (s *Service) publishSubtaskEvent(ctx context.Context, opts zeekRunOptions, 
 		Error:        errText,
 	}
 
-	_ = s.analysisPublisher.Publish(ctx, opts.taskID, eventType, payload)
+	_ = s.publishAnalysisEvent(ctx, opts.taskID, eventType, payload)
 }
 
 func normalizeParentEventStatus(status *ParentTaskStatus) string {
@@ -490,7 +493,7 @@ func (s *Service) publishParentEventIfReady(ctx context.Context, taskID string) 
 		IntelCount:   status.IntelCount,
 	}
 
-	_ = s.analysisPublisher.Publish(ctx, taskID, eventType, payload)
+	_ = s.publishAnalysisEvent(ctx, taskID, eventType, payload)
 }
 
 func (s *Service) Close() error {

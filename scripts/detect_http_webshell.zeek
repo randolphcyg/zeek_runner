@@ -1,6 +1,5 @@
-# 脚本唯一标识符 - 不要修改此ID
-# 此ID用于在数据库中唯一标识此脚本，即使脚本内容更新也不会改变
-const SCRIPT_ID = "DETECT_HTTP_WEBSHELL_v1";
+# SCRIPT_ID: DETECT_HTTP_WEBSHELL_v1
+# NoticeTypes: HTTP_Upload::Suspicious_File_Upload
 
 # 恶意行为检测脚本配置
 # 行为类型：HTTP恶意文件上传(Webshell)

@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	ZeekAnalysisService_Analyze_FullMethodName             = "/zeek_runner.ZeekAnalysisService/Analyze"
 	ZeekAnalysisService_AsyncAnalyze_FullMethodName        = "/zeek_runner.ZeekAnalysisService/AsyncAnalyze"
+	ZeekAnalysisService_AsyncAnalyzeBatch_FullMethodName   = "/zeek_runner.ZeekAnalysisService/AsyncAnalyzeBatch"
 	ZeekAnalysisService_Extract_FullMethodName             = "/zeek_runner.ZeekAnalysisService/Extract"
 	ZeekAnalysisService_ExtractAsync_FullMethodName        = "/zeek_runner.ZeekAnalysisService/ExtractAsync"
 	ZeekAnalysisService_GetTaskStatus_FullMethodName       = "/zeek_runner.ZeekAnalysisService/GetTaskStatus"
@@ -41,6 +42,7 @@ const (
 type ZeekAnalysisServiceClient interface {
 	Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error)
 	AsyncAnalyze(ctx context.Context, in *AsyncAnalyzeRequest, opts ...grpc.CallOption) (*AsyncAnalyzeResponse, error)
+	AsyncAnalyzeBatch(ctx context.Context, in *AsyncAnalyzeBatchRequest, opts ...grpc.CallOption) (*AsyncAnalyzeBatchResponse, error)
 	Extract(ctx context.Context, in *ExtractRequest, opts ...grpc.CallOption) (*ExtractResponse, error)
 	ExtractAsync(ctx context.Context, in *ExtractAsyncRequest, opts ...grpc.CallOption) (*ExtractAsyncResponse, error)
 	GetTaskStatus(ctx context.Context, in *TaskStatusRequest, opts ...grpc.CallOption) (*TaskStatusResponse, error)
@@ -75,6 +77,16 @@ func (c *zeekAnalysisServiceClient) AsyncAnalyze(ctx context.Context, in *AsyncA
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AsyncAnalyzeResponse)
 	err := c.cc.Invoke(ctx, ZeekAnalysisService_AsyncAnalyze_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zeekAnalysisServiceClient) AsyncAnalyzeBatch(ctx context.Context, in *AsyncAnalyzeBatchRequest, opts ...grpc.CallOption) (*AsyncAnalyzeBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AsyncAnalyzeBatchResponse)
+	err := c.cc.Invoke(ctx, ZeekAnalysisService_AsyncAnalyzeBatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +201,7 @@ func (c *zeekAnalysisServiceClient) ReloadScripts(ctx context.Context, in *Reloa
 type ZeekAnalysisServiceServer interface {
 	Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error)
 	AsyncAnalyze(context.Context, *AsyncAnalyzeRequest) (*AsyncAnalyzeResponse, error)
+	AsyncAnalyzeBatch(context.Context, *AsyncAnalyzeBatchRequest) (*AsyncAnalyzeBatchResponse, error)
 	Extract(context.Context, *ExtractRequest) (*ExtractResponse, error)
 	ExtractAsync(context.Context, *ExtractAsyncRequest) (*ExtractAsyncResponse, error)
 	GetTaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error)
@@ -214,6 +227,9 @@ func (UnimplementedZeekAnalysisServiceServer) Analyze(context.Context, *AnalyzeR
 }
 func (UnimplementedZeekAnalysisServiceServer) AsyncAnalyze(context.Context, *AsyncAnalyzeRequest) (*AsyncAnalyzeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AsyncAnalyze not implemented")
+}
+func (UnimplementedZeekAnalysisServiceServer) AsyncAnalyzeBatch(context.Context, *AsyncAnalyzeBatchRequest) (*AsyncAnalyzeBatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AsyncAnalyzeBatch not implemented")
 }
 func (UnimplementedZeekAnalysisServiceServer) Extract(context.Context, *ExtractRequest) (*ExtractResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Extract not implemented")
@@ -298,6 +314,24 @@ func _ZeekAnalysisService_AsyncAnalyze_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ZeekAnalysisServiceServer).AsyncAnalyze(ctx, req.(*AsyncAnalyzeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZeekAnalysisService_AsyncAnalyzeBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AsyncAnalyzeBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZeekAnalysisServiceServer).AsyncAnalyzeBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZeekAnalysisService_AsyncAnalyzeBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZeekAnalysisServiceServer).AsyncAnalyzeBatch(ctx, req.(*AsyncAnalyzeBatchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -496,6 +530,10 @@ var ZeekAnalysisService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AsyncAnalyze",
 			Handler:    _ZeekAnalysisService_AsyncAnalyze_Handler,
+		},
+		{
+			MethodName: "AsyncAnalyzeBatch",
+			Handler:    _ZeekAnalysisService_AsyncAnalyzeBatch_Handler,
 		},
 		{
 			MethodName: "Extract",

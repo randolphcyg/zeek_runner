@@ -1,3 +1,31 @@
+## Script metadata
+
+Detection scripts should declare zeek_runner metadata as comments, not Zeek
+globals. Do not add `const SCRIPT_ID = "...";` to scripts that may run in a
+batch, because multiple scripts loaded by one Zeek process share the global
+namespace.
+
+```zeek
+# SCRIPT_ID: DETECT_EXAMPLE_v1
+# NoticeTypes: ExampleModule::Example_Notice
+# 行为类型：示例行为
+# 行为分类：示例分类
+# 行为描述：示例检测描述
+# 攻击特征：示例攻击特征
+
+@load base/frameworks/notice
+
+module ExampleModule;
+
+export {
+    redef enum Notice::Type += { Example_Notice };
+}
+```
+
+Scripts that cannot be uniquely attributed by notice type should use
+`# BatchMode: disabled` and run as single-script tasks until they can declare a
+stable `# NoticeTypes:` mapping.
+
 ### detect_dns_flood.zeek
 
 ```shell

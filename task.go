@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -29,6 +30,8 @@ type Task struct {
 	PcapPath             string     `json:"pcapPath"`
 	ScriptID             string     `json:"scriptID"`
 	ScriptPath           string     `json:"scriptPath"`
+	RunMode              string     `json:"runMode"`
+	Weight               int        `json:"weight"`
 	OnlyNotice           bool       `json:"onlyNotice"`
 	OutputDir            string     `json:"outputDir"`
 	ExtractedFileMinSize int        `json:"extractedFileMinSize"`
@@ -52,6 +55,8 @@ type TaskManager struct {
 	prefix          string
 	parentKeyPrefix string
 	queueKey        string
+	streamKey       string
+	consumerGroup   string
 	expiration      time.Duration
 	instanceID      string
 }
@@ -126,14 +131,38 @@ func NewTaskManager(redisAddr, redisPassword string, redisDB int, poolCfg *Redis
 		prefix:          "zeek:task:",
 		parentKeyPrefix: "zeek:parent_task:",
 		queueKey:        "zeek:task:queue",
+		streamKey:       "zeek:task:stream",
+		consumerGroup:   "zeek_runner",
 		expiration:      24 * time.Hour,
 		instanceID:      instanceID,
 	}
 }
 
+type BatchQueueJob struct {
+	JobID      string    `json:"jobID"`
+	TaskID     string    `json:"taskID"`
+	PcapID     string    `json:"pcapID"`
+	PcapPath   string    `json:"pcapPath"`
+	UUIDs      []string  `json:"uuids"`
+	Weight     int       `json:"weight"`
+	OnlyNotice bool      `json:"onlyNotice"`
+	CreatedAt  time.Time `json:"createdAt"`
+	StreamID   string    `json:"streamID,omitempty"`
+}
+
 func generateInstanceID() string {
 	hostname, _ := os.Hostname()
 	return fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano()%10000)
+}
+
+func normalizeTaskWeight(weight int) int {
+	if weight <= 0 {
+		return 1
+	}
+	if weight > 100 {
+		return 100
+	}
+	return weight
 }
 
 func (tm *TaskManager) key(uuid string) string {
@@ -155,6 +184,29 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, e
 
 	slog.Info("task created", "taskID", task.TaskID, "uuid", task.UUID)
 	return task, nil
+}
+
+func (tm *TaskManager) CreateBatchTasks(ctx context.Context, req AnalyzeBatchReq) ([]*Task, error) {
+	tasks := make([]*Task, 0, len(req.Scripts))
+	for _, script := range req.Scripts {
+		task := newOfflineScanTask(AnalyzeReq{
+			TaskID:     req.TaskID,
+			UUID:       script.UUID,
+			OnlyNotice: req.OnlyNotice,
+			PcapID:     req.PcapID,
+			PcapPath:   req.PcapPath,
+			ScriptID:   script.ScriptID,
+			ScriptPath: script.ScriptPath,
+		}).newTaskRecord()
+		task.RunMode = script.RunMode
+		task.Weight = normalizeTaskWeight(script.Weight)
+		if err := tm.saveTask(ctx, task); err != nil {
+			return tasks, err
+		}
+		tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusPending, "")
+		tasks = append(tasks, task)
+	}
+	return tasks, nil
 }
 
 // CreateExtractTask 创建文件提取任务
@@ -481,34 +533,121 @@ func (tm *TaskManager) Close() error {
 }
 
 func (tm *TaskManager) EnqueueTask(ctx context.Context, uuid string) error {
-	err := tm.redis.RPush(ctx, tm.queueKey, uuid).Err()
+	return tm.EnqueueBatchJob(ctx, BatchQueueJob{
+		JobID:     uuid,
+		UUIDs:     []string{uuid},
+		Weight:    1,
+		CreatedAt: time.Now(),
+	})
+}
+
+func (tm *TaskManager) ensureConsumerGroup(ctx context.Context) {
+	err := tm.redis.XGroupCreateMkStream(ctx, tm.streamKey, tm.consumerGroup, "0").Err()
+	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+		slog.Warn("create redis stream consumer group failed", "stream", tm.streamKey, "group", tm.consumerGroup, "err", err)
+	}
+}
+
+func (tm *TaskManager) EnqueueBatchJob(ctx context.Context, job BatchQueueJob) error {
+	tm.ensureConsumerGroup(ctx)
+	if job.JobID == "" {
+		job.JobID = fmt.Sprintf("%s:%d", job.TaskID, time.Now().UnixNano())
+	}
+	if job.CreatedAt.IsZero() {
+		job.CreatedAt = time.Now()
+	}
+	if job.Weight <= 0 {
+		job.Weight = len(job.UUIDs)
+		if job.Weight <= 0 {
+			job.Weight = 1
+		}
+	}
+	data, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	err = tm.redis.XAdd(ctx, &redis.XAddArgs{
+		Stream: tm.streamKey,
+		Values: map[string]any{"job": string(data)},
+	}).Err()
 	if err != nil {
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
-	slog.Debug("task enqueued", "uuid", uuid, "instance", tm.instanceID)
+	slog.Debug("task enqueued", "job", job.JobID, "instance", tm.instanceID)
 	return nil
 }
 
 func (tm *TaskManager) DequeueTask(ctx context.Context, timeout time.Duration) (string, error) {
-	result, err := tm.redis.BLPop(ctx, timeout, tm.queueKey).Result()
-	if err == redis.Nil {
-		return "", nil
+	job, err := tm.DequeueBatchJob(ctx, timeout, 10*time.Minute)
+	if err != nil || job == nil || len(job.UUIDs) == 0 {
+		return "", err
 	}
-	if err != nil {
-		return "", fmt.Errorf("failed to dequeue task: %w", err)
-	}
-
-	if len(result) < 2 {
-		return "", fmt.Errorf("invalid dequeue result")
-	}
-
-	uuid := result[1]
-	slog.Debug("task dequeued", "uuid", uuid, "instance", tm.instanceID)
-	return uuid, nil
+	return job.UUIDs[0], nil
 }
 
 func (tm *TaskManager) GetQueueLength(ctx context.Context) (int64, error) {
-	return tm.redis.LLen(ctx, tm.queueKey).Result()
+	return tm.redis.XLen(ctx, tm.streamKey).Result()
+}
+
+func (tm *TaskManager) DequeueBatchJob(ctx context.Context, timeout time.Duration, minIdle time.Duration) (*BatchQueueJob, error) {
+	tm.ensureConsumerGroup(ctx)
+	claimed, _, err := tm.redis.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+		Stream:   tm.streamKey,
+		Group:    tm.consumerGroup,
+		Consumer: tm.instanceID,
+		MinIdle:  minIdle,
+		Start:    "0-0",
+		Count:    1,
+	}).Result()
+	if err == nil && len(claimed) > 0 {
+		return batchJobFromRedisMessage(claimed[0])
+	}
+	if err != nil && err != redis.Nil {
+		slog.Warn("redis stream autoclaim failed", "err", err)
+	}
+
+	streams, err := tm.redis.XReadGroup(ctx, &redis.XReadGroupArgs{
+		Group:    tm.consumerGroup,
+		Consumer: tm.instanceID,
+		Streams:  []string{tm.streamKey, ">"},
+		Count:    1,
+		Block:    timeout,
+	}).Result()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to dequeue task: %w", err)
+	}
+	for _, stream := range streams {
+		for _, msg := range stream.Messages {
+			return batchJobFromRedisMessage(msg)
+		}
+	}
+	return nil, nil
+}
+
+func batchJobFromRedisMessage(msg redis.XMessage) (*BatchQueueJob, error) {
+	value, ok := msg.Values["job"].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid batch job payload")
+	}
+	var job BatchQueueJob
+	if err := json.Unmarshal([]byte(value), &job); err != nil {
+		return nil, err
+	}
+	job.StreamID = msg.ID
+	return &job, nil
+}
+
+func (tm *TaskManager) AckBatchJob(ctx context.Context, job *BatchQueueJob) error {
+	if job == nil || job.StreamID == "" {
+		return nil
+	}
+	if err := tm.redis.XAck(ctx, tm.streamKey, tm.consumerGroup, job.StreamID).Err(); err != nil {
+		return err
+	}
+	return tm.redis.XDel(ctx, tm.streamKey, job.StreamID).Err()
 }
 
 func (tm *TaskManager) AssignTask(ctx context.Context, uuid string) error {

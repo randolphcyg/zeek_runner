@@ -325,17 +325,26 @@ func (h *HTTPHandler) Healthz(c *gin.Context) {
 			redisReady = false
 		}
 	}
+	snapshot := h.service.resourceSnapshot(c.Request.Context())
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":        msg,
-		"pool_running":  h.app.TaskPool.Running(),
-		"pool_capacity": cfg.Pool.Size,
-		"kafka_ready":   h.app.IsKafkaReady(),
-		"redis_ready":   redisReady,
-		"timestamp":     time.Now().Format(time.RFC3339),
-		"version":       "1.0.0",
-		"os":            "linux",
-		"arch":          "amd64",
+		"status":            msg,
+		"pool_running":      h.app.TaskPool.Running(),
+		"pool_capacity":     cfg.Pool.Size,
+		"kafka_ready":       h.app.IsKafkaReady(),
+		"redis_ready":       redisReady,
+		"timestamp":         time.Now().Format(time.RFC3339),
+		"version":           "1.0.0",
+		"os":                "linux",
+		"arch":              "amd64",
+		"queue_pending":     snapshot.QueuePending,
+		"weighted_running":  snapshot.WeightedRunning,
+		"weighted_capacity": snapshot.WeightedCapacity,
+		"cpu_usage":         snapshot.CPUUsage,
+		"mem_usage":         snapshot.MemUsage,
+		"disk_io_busy":      snapshot.DiskIOBusy,
+		"kafka_lag":         snapshot.KafkaLag,
+		"accepting_jobs":    snapshot.AcceptingJobs,
 	})
 }
 

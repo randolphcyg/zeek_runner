@@ -94,6 +94,22 @@ type AnalyzeReq struct {
 	ExtractedFileMinSize int    `json:"extractedFileMinSize"`
 }
 
+type ScriptTaskReq struct {
+	UUID       string `json:"uuid"`
+	ScriptID   string `json:"scriptID"`
+	ScriptPath string `json:"scriptPath"`
+	RunMode    string `json:"runMode"`
+	Weight     int    `json:"weight"`
+}
+
+type AnalyzeBatchReq struct {
+	TaskID     string          `json:"taskID"`
+	OnlyNotice bool            `json:"onlyNotice"`
+	PcapID     string          `json:"pcapID"`
+	PcapPath   string          `json:"pcapPath"`
+	Scripts    []ScriptTaskReq `json:"scripts"`
+}
+
 type AnalyzeResp struct {
 	TaskID     string `json:"taskID"`
 	UUID       string `json:"uuid"`
@@ -138,6 +154,7 @@ type Service struct {
 	configManager         *ConfigManager
 	taskManager           *TaskManager
 	fileDedupMgr          *FileDedupManager
+	scheduler             *ResourceScheduler
 	analysisPublisher     *analysisEventPublisher
 	extractPublisher      *extractEventPublisher
 	verificationPublisher *verificationLogPublisher
@@ -161,6 +178,7 @@ func NewService(pool *ants.Pool, cm *ConfigManager, tm *TaskManager, fdm *FileDe
 		configManager:         cm,
 		taskManager:           tm,
 		fileDedupMgr:          fdm,
+		scheduler:             &ResourceScheduler{},
 		analysisPublisher:     newAnalysisEventPublisher(cfg.Kafka.Brokers),
 		extractPublisher:      newExtractEventPublisher(cfg.Kafka.Brokers),
 		verificationPublisher: newVerificationLogPublisher(cfg.Kafka.Brokers),
@@ -277,31 +295,72 @@ func validateExtractReq(req ExtractReq) error {
 }
 
 func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, error) {
+	batchReq := AnalyzeBatchReq{
+		TaskID:     req.TaskID,
+		OnlyNotice: req.OnlyNotice,
+		PcapID:     req.PcapID,
+		PcapPath:   req.PcapPath,
+		Scripts: []ScriptTaskReq{{
+			UUID:       req.UUID,
+			ScriptID:   req.ScriptID,
+			ScriptPath: req.ScriptPath,
+			RunMode:    "scan",
+			Weight:     1,
+		}},
+	}
+	tasks, err := s.SubmitAsyncBatchTask(ctx, batchReq)
+	if err != nil {
+		return nil, err
+	}
+	if len(tasks) == 0 {
+		return nil, errors.New("no task accepted")
+	}
+	return tasks[0], nil
+}
+
+func (s *Service) SubmitAsyncBatchTask(ctx context.Context, req AnalyzeBatchReq) ([]*Task, error) {
 	if s.taskManager == nil {
 		return nil, errors.New("task manager not initialized, Redis required")
 	}
 
-	req, err := s.prepareAnalyzeReq(req)
+	req, err := s.prepareAnalyzeBatchReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	task, err := s.taskManager.CreateTask(ctx, req)
+	tasks, err := s.taskManager.CreateBatchTasks(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
-	if err := s.taskManager.EnqueueTask(ctx, task.UUID); err != nil {
-		s.taskManager.SetFailed(ctx, task.UUID, "failed to enqueue")
+	uuids := make([]string, 0, len(tasks))
+	weight := 0
+	for _, task := range tasks {
+		uuids = append(uuids, task.UUID)
+		weight += normalizeTaskWeight(task.Weight)
+	}
+	if err := s.taskManager.EnqueueBatchJob(ctx, BatchQueueJob{
+		JobID:      req.TaskID + ":" + req.PcapID,
+		TaskID:     req.TaskID,
+		PcapID:     req.PcapID,
+		PcapPath:   req.PcapPath,
+		UUIDs:      uuids,
+		Weight:     weight,
+		OnlyNotice: req.OnlyNotice,
+	}); err != nil {
+		for _, task := range tasks {
+			s.taskManager.SetFailed(ctx, task.UUID, "failed to enqueue")
+		}
 		return nil, fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
-	LogTaskEvent("submitted", task.TaskID, task.UUID,
+	LogTaskEvent("submitted_batch", req.TaskID, req.PcapID,
 		"status", "queued",
+		"count", len(tasks),
 	)
 
 	RecordTask("queued", 0)
-	return task, nil
+	return tasks, nil
 }
 
 func (s *Service) executeAsyncTask(ctx context.Context, uuid string, spec offlineTaskSpec, timeout int) {
@@ -420,21 +479,59 @@ func (s *Service) StartTaskConsumer(ctx context.Context) {
 				LogServiceEvent("consumer_stopped")
 				return
 			default:
-				uuid, err := s.taskManager.DequeueTask(ctx, 5*time.Second)
+				if !s.acceptingJobs(ctx) || s.scheduler.Running() >= s.weightedCapacity() {
+					time.Sleep(time.Second)
+					continue
+				}
+				job, err := s.taskManager.DequeueBatchJob(ctx, 5*time.Second, s.leaseTimeout())
 				if err != nil {
 					LogServiceError("dequeue_failed", err)
 					time.Sleep(time.Second)
 					continue
 				}
 
-				if uuid == "" {
+				if job == nil {
 					continue
 				}
 
-				s.processQueuedTask(ctx, uuid)
+				s.processQueuedBatchJob(ctx, job)
 			}
 		}
 	}()
+}
+
+func (s *Service) processQueuedBatchJob(ctx context.Context, job *BatchQueueJob) {
+	if job == nil || len(job.UUIDs) == 0 {
+		return
+	}
+	if !s.acceptingJobs(ctx) {
+		return
+	}
+	weight := normalizeTaskWeight(job.Weight)
+	if !s.scheduler.TryAcquire(weight, s.weightedCapacity()) {
+		return
+	}
+	cfg := s.getConfig()
+	err := s.pool.Submit(func() {
+		defer s.scheduler.Release(weight)
+		s.executeAsyncBatchJob(context.Background(), job, cfg.Pool.TimeoutMinutes)
+		_ = s.taskManager.AckBatchJob(context.Background(), job)
+	})
+	if err != nil {
+		s.scheduler.Release(weight)
+		LogServiceError("batch_submit_failed", err)
+		return
+	}
+	for _, uuid := range job.UUIDs {
+		task, err := s.taskManager.GetTask(ctx, uuid)
+		if err == nil && task.Status == TaskStatusPending {
+			_ = s.taskManager.SetRunning(ctx, uuid)
+		}
+	}
+	LogTaskEvent("started_batch", job.TaskID, job.PcapID,
+		"count", len(job.UUIDs),
+		"weight", weight,
+	)
 }
 
 func (s *Service) processQueuedTask(ctx context.Context, uuid string) {
@@ -503,6 +600,45 @@ func (s *Service) prepareAnalyzeReq(req AnalyzeReq) (AnalyzeReq, error) {
 		return req, err
 	}
 	req.ScriptPath = script.ScriptPath
+	return req, nil
+}
+
+func (s *Service) prepareAnalyzeBatchReq(req AnalyzeBatchReq) (AnalyzeBatchReq, error) {
+	if req.TaskID == "" {
+		return req, errors.New("missing taskID")
+	}
+	if req.PcapID == "" {
+		return req, errors.New("missing pcapID")
+	}
+	if req.PcapPath == "" {
+		return req, errors.New("missing pcapPath")
+	}
+	if len(req.Scripts) == 0 {
+		return req, errors.New("missing scripts")
+	}
+	if err := validatePath(req.PcapPath, "pcap"); err != nil {
+		return req, err
+	}
+	if !isFileExist(req.PcapPath) {
+		return req, fmt.Errorf("file not found: %s", req.PcapPath)
+	}
+	for i, scriptReq := range req.Scripts {
+		if scriptReq.UUID == "" {
+			return req, errors.New("missing script uuid")
+		}
+		if scriptReq.ScriptID == "" {
+			return req, errors.New("missing scriptID")
+		}
+		script, err := s.ResolveManagedScript(scriptReq.ScriptID, scriptReq.ScriptPath)
+		if err != nil {
+			return req, err
+		}
+		req.Scripts[i].ScriptPath = script.ScriptPath
+		if strings.TrimSpace(req.Scripts[i].RunMode) == "" {
+			req.Scripts[i].RunMode = "scan"
+		}
+		req.Scripts[i].Weight = normalizeTaskWeight(req.Scripts[i].Weight)
+	}
 	return req, nil
 }
 

@@ -38,6 +38,19 @@ type PoolConfig struct {
 	TimeoutMinutes int `yaml:"timeoutMinutes"`
 }
 
+type SchedulerConfig struct {
+	WeightedCapacity      int    `yaml:"weightedCapacity"`
+	MaxClaimBatch         int    `yaml:"maxClaimBatch"`
+	LeaseTimeout          string `yaml:"leaseTimeout"`
+	KafkaLagHighWatermark int64  `yaml:"kafkaLagHighWatermark"`
+	MinFreeDiskPercent    int    `yaml:"minFreeDiskPercent"`
+}
+
+type BatchConfig struct {
+	Enabled              bool `yaml:"enabled"`
+	MaxScriptsPerZeekRun int  `yaml:"maxScriptsPerZeekRun"`
+}
+
 type HTTPConfig struct {
 	Host         string          `yaml:"host"`
 	Port         int             `yaml:"port"`
@@ -84,6 +97,8 @@ type Config struct {
 	Redis     RedisConfig     `yaml:"redis"`
 	Kafka     KafkaConfig     `yaml:"kafka"`
 	Pool      PoolConfig      `yaml:"pool"`
+	Scheduler SchedulerConfig `yaml:"scheduler"`
+	Batch     BatchConfig     `yaml:"batch"`
 	RateLimit RateLimitConfig `yaml:"rateLimit"`
 	HTTP      HTTPConfig      `yaml:"http"`
 	GRPC      GRPCConfig      `yaml:"grpc"`
@@ -163,6 +178,17 @@ func loadConfig() *Config {
 		Pool: PoolConfig{
 			Size:           getEnvInt("ZEEK_CONCURRENT_TASKS", 8),
 			TimeoutMinutes: getEnvInt("ZEEK_TIMEOUT_MINUTES", 5),
+		},
+		Scheduler: SchedulerConfig{
+			WeightedCapacity:      getEnvInt("ZEEK_WEIGHTED_CAPACITY", getEnvInt("ZEEK_CONCURRENT_TASKS", 8)),
+			MaxClaimBatch:         getEnvInt("ZEEK_MAX_CLAIM_BATCH", 1),
+			LeaseTimeout:          getEnvString("ZEEK_LEASE_TIMEOUT", "10m"),
+			KafkaLagHighWatermark: int64(getEnvInt("ZEEK_KAFKA_LAG_HIGH_WATERMARK", 0)),
+			MinFreeDiskPercent:    getEnvInt("ZEEK_MIN_FREE_DISK_PERCENT", 5),
+		},
+		Batch: BatchConfig{
+			Enabled:              getEnvBool("ZEEK_BATCH_ENABLED", true),
+			MaxScriptsPerZeekRun: getEnvInt("ZEEK_BATCH_MAX_SCRIPTS_PER_RUN", 16),
 		},
 		RateLimit: RateLimitConfig{
 			Limit:  getEnvInt("RATE_LIMIT", 1000),

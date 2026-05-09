@@ -416,19 +416,27 @@ func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
 
 // 健康检查响应
 type HealthCheckResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	PoolRunning   int32                  `protobuf:"varint,2,opt,name=pool_running,json=poolRunning,proto3" json:"pool_running,omitempty"`
-	PoolCapacity  int32                  `protobuf:"varint,3,opt,name=pool_capacity,json=poolCapacity,proto3" json:"pool_capacity,omitempty"`
-	KafkaReady    bool                   `protobuf:"varint,4,opt,name=kafka_ready,json=kafkaReady,proto3" json:"kafka_ready,omitempty"`
-	Timestamp     string                 `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Version       string                 `protobuf:"bytes,6,opt,name=version,proto3" json:"version,omitempty"`
-	GoVersion     string                 `protobuf:"bytes,7,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"`
-	Os            string                 `protobuf:"bytes,8,opt,name=os,proto3" json:"os,omitempty"`
-	Arch          string                 `protobuf:"bytes,9,opt,name=arch,proto3" json:"arch,omitempty"`
-	RedisReady    bool                   `protobuf:"varint,10,opt,name=redis_ready,json=redisReady,proto3" json:"redis_ready,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Status           string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	PoolRunning      int32                  `protobuf:"varint,2,opt,name=pool_running,json=poolRunning,proto3" json:"pool_running,omitempty"`
+	PoolCapacity     int32                  `protobuf:"varint,3,opt,name=pool_capacity,json=poolCapacity,proto3" json:"pool_capacity,omitempty"`
+	KafkaReady       bool                   `protobuf:"varint,4,opt,name=kafka_ready,json=kafkaReady,proto3" json:"kafka_ready,omitempty"`
+	Timestamp        string                 `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Version          string                 `protobuf:"bytes,6,opt,name=version,proto3" json:"version,omitempty"`
+	GoVersion        string                 `protobuf:"bytes,7,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"`
+	Os               string                 `protobuf:"bytes,8,opt,name=os,proto3" json:"os,omitempty"`
+	Arch             string                 `protobuf:"bytes,9,opt,name=arch,proto3" json:"arch,omitempty"`
+	RedisReady       bool                   `protobuf:"varint,10,opt,name=redis_ready,json=redisReady,proto3" json:"redis_ready,omitempty"`
+	QueuePending     int64                  `protobuf:"varint,11,opt,name=queue_pending,json=queuePending,proto3" json:"queue_pending,omitempty"`
+	WeightedRunning  int32                  `protobuf:"varint,12,opt,name=weighted_running,json=weightedRunning,proto3" json:"weighted_running,omitempty"`
+	WeightedCapacity int32                  `protobuf:"varint,13,opt,name=weighted_capacity,json=weightedCapacity,proto3" json:"weighted_capacity,omitempty"`
+	CpuUsage         float64                `protobuf:"fixed64,14,opt,name=cpu_usage,json=cpuUsage,proto3" json:"cpu_usage,omitempty"`
+	MemUsage         float64                `protobuf:"fixed64,15,opt,name=mem_usage,json=memUsage,proto3" json:"mem_usage,omitempty"`
+	DiskIoBusy       float64                `protobuf:"fixed64,16,opt,name=disk_io_busy,json=diskIoBusy,proto3" json:"disk_io_busy,omitempty"`
+	KafkaLag         int64                  `protobuf:"varint,17,opt,name=kafka_lag,json=kafkaLag,proto3" json:"kafka_lag,omitempty"`
+	AcceptingJobs    bool                   `protobuf:"varint,18,opt,name=accepting_jobs,json=acceptingJobs,proto3" json:"accepting_jobs,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *HealthCheckResponse) Reset() {
@@ -527,6 +535,62 @@ func (x *HealthCheckResponse) GetArch() string {
 func (x *HealthCheckResponse) GetRedisReady() bool {
 	if x != nil {
 		return x.RedisReady
+	}
+	return false
+}
+
+func (x *HealthCheckResponse) GetQueuePending() int64 {
+	if x != nil {
+		return x.QueuePending
+	}
+	return 0
+}
+
+func (x *HealthCheckResponse) GetWeightedRunning() int32 {
+	if x != nil {
+		return x.WeightedRunning
+	}
+	return 0
+}
+
+func (x *HealthCheckResponse) GetWeightedCapacity() int32 {
+	if x != nil {
+		return x.WeightedCapacity
+	}
+	return 0
+}
+
+func (x *HealthCheckResponse) GetCpuUsage() float64 {
+	if x != nil {
+		return x.CpuUsage
+	}
+	return 0
+}
+
+func (x *HealthCheckResponse) GetMemUsage() float64 {
+	if x != nil {
+		return x.MemUsage
+	}
+	return 0
+}
+
+func (x *HealthCheckResponse) GetDiskIoBusy() float64 {
+	if x != nil {
+		return x.DiskIoBusy
+	}
+	return 0
+}
+
+func (x *HealthCheckResponse) GetKafkaLag() int64 {
+	if x != nil {
+		return x.KafkaLag
+	}
+	return 0
+}
+
+func (x *HealthCheckResponse) GetAcceptingJobs() bool {
+	if x != nil {
+		return x.AcceptingJobs
 	}
 	return false
 }
@@ -902,6 +966,226 @@ func (x *AsyncAnalyzeResponse) GetCreateTime() string {
 	return ""
 }
 
+type ScriptTask struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`             // 子任务UUID
+	ScriptID      string                 `protobuf:"bytes,2,opt,name=scriptID,proto3" json:"scriptID,omitempty"`     // 脚本ID
+	ScriptPath    string                 `protobuf:"bytes,3,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"` // 脚本路径（可选，优先使用托管脚本）
+	RunMode       string                 `protobuf:"bytes,4,opt,name=runMode,proto3" json:"runMode,omitempty"`       // 运行模式：scan/intel/extract
+	Weight        int32                  `protobuf:"varint,5,opt,name=weight,proto3" json:"weight,omitempty"`        // 调度权重
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScriptTask) Reset() {
+	*x = ScriptTask{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScriptTask) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScriptTask) ProtoMessage() {}
+
+func (x *ScriptTask) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScriptTask.ProtoReflect.Descriptor instead.
+func (*ScriptTask) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ScriptTask) GetUuid() string {
+	if x != nil {
+		return x.Uuid
+	}
+	return ""
+}
+
+func (x *ScriptTask) GetScriptID() string {
+	if x != nil {
+		return x.ScriptID
+	}
+	return ""
+}
+
+func (x *ScriptTask) GetScriptPath() string {
+	if x != nil {
+		return x.ScriptPath
+	}
+	return ""
+}
+
+func (x *ScriptTask) GetRunMode() string {
+	if x != nil {
+		return x.RunMode
+	}
+	return ""
+}
+
+func (x *ScriptTask) GetWeight() int32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+type AsyncAnalyzeBatchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskID        string                 `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`          // 父任务ID
+	PcapID        string                 `protobuf:"bytes,2,opt,name=pcapID,proto3" json:"pcapID,omitempty"`          // pcap文件ID
+	PcapPath      string                 `protobuf:"bytes,3,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`      // pcap文件路径
+	OnlyNotice    bool                   `protobuf:"varint,4,opt,name=onlyNotice,proto3" json:"onlyNotice,omitempty"` // 是否只生成notice日志
+	Scripts       []*ScriptTask          `protobuf:"bytes,5,rep,name=scripts,proto3" json:"scripts,omitempty"`        // 脚本任务列表
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AsyncAnalyzeBatchRequest) Reset() {
+	*x = AsyncAnalyzeBatchRequest{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AsyncAnalyzeBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AsyncAnalyzeBatchRequest) ProtoMessage() {}
+
+func (x *AsyncAnalyzeBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AsyncAnalyzeBatchRequest.ProtoReflect.Descriptor instead.
+func (*AsyncAnalyzeBatchRequest) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *AsyncAnalyzeBatchRequest) GetTaskID() string {
+	if x != nil {
+		return x.TaskID
+	}
+	return ""
+}
+
+func (x *AsyncAnalyzeBatchRequest) GetPcapID() string {
+	if x != nil {
+		return x.PcapID
+	}
+	return ""
+}
+
+func (x *AsyncAnalyzeBatchRequest) GetPcapPath() string {
+	if x != nil {
+		return x.PcapPath
+	}
+	return ""
+}
+
+func (x *AsyncAnalyzeBatchRequest) GetOnlyNotice() bool {
+	if x != nil {
+		return x.OnlyNotice
+	}
+	return false
+}
+
+func (x *AsyncAnalyzeBatchRequest) GetScripts() []*ScriptTask {
+	if x != nil {
+		return x.Scripts
+	}
+	return nil
+}
+
+type AsyncAnalyzeBatchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskID        string                 `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`                // 父任务ID
+	AcceptedCount int32                  `protobuf:"varint,2,opt,name=acceptedCount,proto3" json:"acceptedCount,omitempty"` // 已接受子任务数
+	RejectedCount int32                  `protobuf:"varint,3,opt,name=rejectedCount,proto3" json:"rejectedCount,omitempty"` // 拒绝子任务数
+	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`                // 状态
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AsyncAnalyzeBatchResponse) Reset() {
+	*x = AsyncAnalyzeBatchResponse{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AsyncAnalyzeBatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AsyncAnalyzeBatchResponse) ProtoMessage() {}
+
+func (x *AsyncAnalyzeBatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AsyncAnalyzeBatchResponse.ProtoReflect.Descriptor instead.
+func (*AsyncAnalyzeBatchResponse) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *AsyncAnalyzeBatchResponse) GetTaskID() string {
+	if x != nil {
+		return x.TaskID
+	}
+	return ""
+}
+
+func (x *AsyncAnalyzeBatchResponse) GetAcceptedCount() int32 {
+	if x != nil {
+		return x.AcceptedCount
+	}
+	return 0
+}
+
+func (x *AsyncAnalyzeBatchResponse) GetRejectedCount() int32 {
+	if x != nil {
+		return x.RejectedCount
+	}
+	return 0
+}
+
+func (x *AsyncAnalyzeBatchResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 // 异步文件提取请求
 type ExtractAsyncRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
@@ -919,7 +1203,7 @@ type ExtractAsyncRequest struct {
 
 func (x *ExtractAsyncRequest) Reset() {
 	*x = ExtractAsyncRequest{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[12]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -931,7 +1215,7 @@ func (x *ExtractAsyncRequest) String() string {
 func (*ExtractAsyncRequest) ProtoMessage() {}
 
 func (x *ExtractAsyncRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[12]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -944,7 +1228,7 @@ func (x *ExtractAsyncRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtractAsyncRequest.ProtoReflect.Descriptor instead.
 func (*ExtractAsyncRequest) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{12}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ExtractAsyncRequest) GetTaskID() string {
@@ -1016,7 +1300,7 @@ type ExtractAsyncResponse struct {
 
 func (x *ExtractAsyncResponse) Reset() {
 	*x = ExtractAsyncResponse{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[13]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1028,7 +1312,7 @@ func (x *ExtractAsyncResponse) String() string {
 func (*ExtractAsyncResponse) ProtoMessage() {}
 
 func (x *ExtractAsyncResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[13]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1041,7 +1325,7 @@ func (x *ExtractAsyncResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtractAsyncResponse.ProtoReflect.Descriptor instead.
 func (*ExtractAsyncResponse) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{13}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ExtractAsyncResponse) GetTaskID() string {
@@ -1082,7 +1366,7 @@ type TaskStatusRequest struct {
 
 func (x *TaskStatusRequest) Reset() {
 	*x = TaskStatusRequest{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[14]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1094,7 +1378,7 @@ func (x *TaskStatusRequest) String() string {
 func (*TaskStatusRequest) ProtoMessage() {}
 
 func (x *TaskStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[14]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1107,7 +1391,7 @@ func (x *TaskStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskStatusRequest.ProtoReflect.Descriptor instead.
 func (*TaskStatusRequest) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{14}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TaskStatusRequest) GetUuid() string {
@@ -1143,7 +1427,7 @@ type TaskStatusResponse struct {
 
 func (x *TaskStatusResponse) Reset() {
 	*x = TaskStatusResponse{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[15]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1155,7 +1439,7 @@ func (x *TaskStatusResponse) String() string {
 func (*TaskStatusResponse) ProtoMessage() {}
 
 func (x *TaskStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[15]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1168,7 +1452,7 @@ func (x *TaskStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskStatusResponse.ProtoReflect.Descriptor instead.
 func (*TaskStatusResponse) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{15}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *TaskStatusResponse) GetTaskID() string {
@@ -1300,7 +1584,7 @@ type ParentTaskStatusRequest struct {
 
 func (x *ParentTaskStatusRequest) Reset() {
 	*x = ParentTaskStatusRequest{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[16]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1312,7 +1596,7 @@ func (x *ParentTaskStatusRequest) String() string {
 func (*ParentTaskStatusRequest) ProtoMessage() {}
 
 func (x *ParentTaskStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[16]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1325,7 +1609,7 @@ func (x *ParentTaskStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParentTaskStatusRequest.ProtoReflect.Descriptor instead.
 func (*ParentTaskStatusRequest) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{16}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ParentTaskStatusRequest) GetTaskID() string {
@@ -1353,7 +1637,7 @@ type SubTaskSummary struct {
 
 func (x *SubTaskSummary) Reset() {
 	*x = SubTaskSummary{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[17]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1365,7 +1649,7 @@ func (x *SubTaskSummary) String() string {
 func (*SubTaskSummary) ProtoMessage() {}
 
 func (x *SubTaskSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[17]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1378,7 +1662,7 @@ func (x *SubTaskSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubTaskSummary.ProtoReflect.Descriptor instead.
 func (*SubTaskSummary) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{17}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SubTaskSummary) GetUuid() string {
@@ -1465,7 +1749,7 @@ type ParentTaskStatusResponse struct {
 
 func (x *ParentTaskStatusResponse) Reset() {
 	*x = ParentTaskStatusResponse{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[18]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1477,7 +1761,7 @@ func (x *ParentTaskStatusResponse) String() string {
 func (*ParentTaskStatusResponse) ProtoMessage() {}
 
 func (x *ParentTaskStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[18]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1490,7 +1774,7 @@ func (x *ParentTaskStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParentTaskStatusResponse.ProtoReflect.Descriptor instead.
 func (*ParentTaskStatusResponse) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{18}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ParentTaskStatusResponse) GetTaskID() string {
@@ -1587,7 +1871,7 @@ type ListScriptsRequest struct {
 
 func (x *ListScriptsRequest) Reset() {
 	*x = ListScriptsRequest{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[19]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1599,7 +1883,7 @@ func (x *ListScriptsRequest) String() string {
 func (*ListScriptsRequest) ProtoMessage() {}
 
 func (x *ListScriptsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[19]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1612,7 +1896,7 @@ func (x *ListScriptsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListScriptsRequest.ProtoReflect.Descriptor instead.
 func (*ListScriptsRequest) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{19}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListScriptsRequest) GetName() string {
@@ -1645,13 +1929,14 @@ type ScriptInfo struct {
 	Enabled          bool                   `protobuf:"varint,12,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	Valid            bool                   `protobuf:"varint,13,opt,name=valid,proto3" json:"valid,omitempty"`
 	Error            string                 `protobuf:"bytes,14,opt,name=error,proto3" json:"error,omitempty"`
+	NoticeTypes      []string               `protobuf:"bytes,15,rep,name=noticeTypes,proto3" json:"noticeTypes,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ScriptInfo) Reset() {
 	*x = ScriptInfo{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[20]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1663,7 +1948,7 @@ func (x *ScriptInfo) String() string {
 func (*ScriptInfo) ProtoMessage() {}
 
 func (x *ScriptInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[20]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1676,7 +1961,7 @@ func (x *ScriptInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScriptInfo.ProtoReflect.Descriptor instead.
 func (*ScriptInfo) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{20}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ScriptInfo) GetScriptID() string {
@@ -1777,6 +2062,13 @@ func (x *ScriptInfo) GetError() string {
 	return ""
 }
 
+func (x *ScriptInfo) GetNoticeTypes() []string {
+	if x != nil {
+		return x.NoticeTypes
+	}
+	return nil
+}
+
 type ListScriptsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Scripts       []*ScriptInfo          `protobuf:"bytes,1,rep,name=scripts,proto3" json:"scripts,omitempty"`
@@ -1786,7 +2078,7 @@ type ListScriptsResponse struct {
 
 func (x *ListScriptsResponse) Reset() {
 	*x = ListScriptsResponse{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[21]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1798,7 +2090,7 @@ func (x *ListScriptsResponse) String() string {
 func (*ListScriptsResponse) ProtoMessage() {}
 
 func (x *ListScriptsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[21]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1811,7 +2103,7 @@ func (x *ListScriptsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListScriptsResponse.ProtoReflect.Descriptor instead.
 func (*ListScriptsResponse) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{21}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListScriptsResponse) GetScripts() []*ScriptInfo {
@@ -1830,7 +2122,7 @@ type GetScriptRequest struct {
 
 func (x *GetScriptRequest) Reset() {
 	*x = GetScriptRequest{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[22]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1842,7 +2134,7 @@ func (x *GetScriptRequest) String() string {
 func (*GetScriptRequest) ProtoMessage() {}
 
 func (x *GetScriptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[22]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1855,7 +2147,7 @@ func (x *GetScriptRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetScriptRequest.ProtoReflect.Descriptor instead.
 func (*GetScriptRequest) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{22}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetScriptRequest) GetScriptID() string {
@@ -1873,7 +2165,7 @@ type ReloadScriptsRequest struct {
 
 func (x *ReloadScriptsRequest) Reset() {
 	*x = ReloadScriptsRequest{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[23]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1885,7 +2177,7 @@ func (x *ReloadScriptsRequest) String() string {
 func (*ReloadScriptsRequest) ProtoMessage() {}
 
 func (x *ReloadScriptsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[23]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1898,7 +2190,7 @@ func (x *ReloadScriptsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadScriptsRequest.ProtoReflect.Descriptor instead.
 func (*ReloadScriptsRequest) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{23}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{26}
 }
 
 type ReloadScriptsResponse struct {
@@ -1913,7 +2205,7 @@ type ReloadScriptsResponse struct {
 
 func (x *ReloadScriptsResponse) Reset() {
 	*x = ReloadScriptsResponse{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[24]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1925,7 +2217,7 @@ func (x *ReloadScriptsResponse) String() string {
 func (*ReloadScriptsResponse) ProtoMessage() {}
 
 func (x *ReloadScriptsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[24]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1938,7 +2230,7 @@ func (x *ReloadScriptsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadScriptsResponse.ProtoReflect.Descriptor instead.
 func (*ReloadScriptsResponse) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{24}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ReloadScriptsResponse) GetTotal() int32 {
@@ -2014,7 +2306,7 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"scriptPath\x12\x1c\n" +
 	"\toutputDir\x18\x05 \x01(\tR\toutputDir\x12\x1c\n" +
 	"\tstartTime\x18\x06 \x01(\tR\tstartTime\"\x14\n" +
-	"\x12HealthCheckRequest\"\xb2\x02\n" +
+	"\x12HealthCheckRequest\"\xcf\x04\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12!\n" +
 	"\fpool_running\x18\x02 \x01(\x05R\vpoolRunning\x12#\n" +
@@ -2029,7 +2321,16 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\x04arch\x18\t \x01(\tR\x04arch\x12\x1f\n" +
 	"\vredis_ready\x18\n" +
 	" \x01(\bR\n" +
-	"redisReady\"3\n" +
+	"redisReady\x12#\n" +
+	"\rqueue_pending\x18\v \x01(\x03R\fqueuePending\x12)\n" +
+	"\x10weighted_running\x18\f \x01(\x05R\x0fweightedRunning\x12+\n" +
+	"\x11weighted_capacity\x18\r \x01(\x05R\x10weightedCapacity\x12\x1b\n" +
+	"\tcpu_usage\x18\x0e \x01(\x01R\bcpuUsage\x12\x1b\n" +
+	"\tmem_usage\x18\x0f \x01(\x01R\bmemUsage\x12 \n" +
+	"\fdisk_io_busy\x18\x10 \x01(\x01R\n" +
+	"diskIoBusy\x12\x1b\n" +
+	"\tkafka_lag\x18\x11 \x01(\x03R\bkafkaLag\x12%\n" +
+	"\x0eaccepting_jobs\x18\x12 \x01(\bR\racceptingJobs\"3\n" +
 	"\x13VersionCheckRequest\x12\x1c\n" +
 	"\tcomponent\x18\x01 \x01(\tR\tcomponent\"N\n" +
 	"\x14VersionCheckResponse\x12\x1c\n" +
@@ -2062,7 +2363,29 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1e\n" +
 	"\n" +
 	"createTime\x18\x04 \x01(\tR\n" +
-	"createTime\"\x9b\x02\n" +
+	"createTime\"\x8e\x01\n" +
+	"\n" +
+	"ScriptTask\x12\x12\n" +
+	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\x1a\n" +
+	"\bscriptID\x18\x02 \x01(\tR\bscriptID\x12\x1e\n" +
+	"\n" +
+	"scriptPath\x18\x03 \x01(\tR\n" +
+	"scriptPath\x12\x18\n" +
+	"\arunMode\x18\x04 \x01(\tR\arunMode\x12\x16\n" +
+	"\x06weight\x18\x05 \x01(\x05R\x06weight\"\xb9\x01\n" +
+	"\x18AsyncAnalyzeBatchRequest\x12\x16\n" +
+	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12\x16\n" +
+	"\x06pcapID\x18\x02 \x01(\tR\x06pcapID\x12\x1a\n" +
+	"\bpcapPath\x18\x03 \x01(\tR\bpcapPath\x12\x1e\n" +
+	"\n" +
+	"onlyNotice\x18\x04 \x01(\bR\n" +
+	"onlyNotice\x121\n" +
+	"\ascripts\x18\x05 \x03(\v2\x17.zeek_runner.ScriptTaskR\ascripts\"\x97\x01\n" +
+	"\x19AsyncAnalyzeBatchResponse\x12\x16\n" +
+	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12$\n" +
+	"\racceptedCount\x18\x02 \x01(\x05R\racceptedCount\x12$\n" +
+	"\rrejectedCount\x18\x03 \x01(\x05R\rrejectedCount\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\"\x9b\x02\n" +
 	"\x13ExtractAsyncRequest\x12\x16\n" +
 	"\x06taskID\x18\x01 \x01(\tR\x06taskID\x12\x12\n" +
 	"\x04uuid\x18\x02 \x01(\tR\x04uuid\x12\x16\n" +
@@ -2144,7 +2467,7 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"intelCount\"J\n" +
 	"\x12ListScriptsRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
-	"\venabledOnly\x18\x02 \x01(\bR\venabledOnly\"\xb6\x03\n" +
+	"\venabledOnly\x18\x02 \x01(\bR\venabledOnly\"\xd8\x03\n" +
 	"\n" +
 	"ScriptInfo\x12\x1a\n" +
 	"\bscriptID\x18\x01 \x01(\tR\bscriptID\x12\x1e\n" +
@@ -2165,7 +2488,8 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\tupdatedAt\x18\v \x01(\tR\tupdatedAt\x12\x18\n" +
 	"\aenabled\x18\f \x01(\bR\aenabled\x12\x14\n" +
 	"\x05valid\x18\r \x01(\bR\x05valid\x12\x14\n" +
-	"\x05error\x18\x0e \x01(\tR\x05error\"H\n" +
+	"\x05error\x18\x0e \x01(\tR\x05error\x12 \n" +
+	"\vnoticeTypes\x18\x0f \x03(\tR\vnoticeTypes\"H\n" +
 	"\x13ListScriptsResponse\x121\n" +
 	"\ascripts\x18\x01 \x03(\v2\x17.zeek_runner.ScriptInfoR\ascripts\".\n" +
 	"\x10GetScriptRequest\x12\x1a\n" +
@@ -2175,10 +2499,11 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x12\x14\n" +
 	"\x05valid\x18\x02 \x01(\x05R\x05valid\x12\x18\n" +
 	"\ainvalid\x18\x03 \x01(\x05R\ainvalid\x121\n" +
-	"\ascripts\x18\x04 \x03(\v2\x17.zeek_runner.ScriptInfoR\ascripts2\x8d\b\n" +
+	"\ascripts\x18\x04 \x03(\v2\x17.zeek_runner.ScriptInfoR\ascripts2\xf3\b\n" +
 	"\x13ZeekAnalysisService\x12F\n" +
 	"\aAnalyze\x12\x1b.zeek_runner.AnalyzeRequest\x1a\x1c.zeek_runner.AnalyzeResponse\"\x00\x12U\n" +
-	"\fAsyncAnalyze\x12 .zeek_runner.AsyncAnalyzeRequest\x1a!.zeek_runner.AsyncAnalyzeResponse\"\x00\x12F\n" +
+	"\fAsyncAnalyze\x12 .zeek_runner.AsyncAnalyzeRequest\x1a!.zeek_runner.AsyncAnalyzeResponse\"\x00\x12d\n" +
+	"\x11AsyncAnalyzeBatch\x12%.zeek_runner.AsyncAnalyzeBatchRequest\x1a&.zeek_runner.AsyncAnalyzeBatchResponse\"\x00\x12F\n" +
 	"\aExtract\x12\x1b.zeek_runner.ExtractRequest\x1a\x1c.zeek_runner.ExtractResponse\"\x00\x12U\n" +
 	"\fExtractAsync\x12 .zeek_runner.ExtractAsyncRequest\x1a!.zeek_runner.ExtractAsyncResponse\"\x00\x12R\n" +
 	"\rGetTaskStatus\x12\x1e.zeek_runner.TaskStatusRequest\x1a\x1f.zeek_runner.TaskStatusResponse\"\x00\x12d\n" +
@@ -2202,67 +2527,73 @@ func file_api_pb_zeek_runner_proto_rawDescGZIP() []byte {
 	return file_api_pb_zeek_runner_proto_rawDescData
 }
 
-var file_api_pb_zeek_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_api_pb_zeek_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_api_pb_zeek_runner_proto_goTypes = []any{
-	(*AnalyzeRequest)(nil),           // 0: zeek_runner.AnalyzeRequest
-	(*AnalyzeResponse)(nil),          // 1: zeek_runner.AnalyzeResponse
-	(*ExtractRequest)(nil),           // 2: zeek_runner.ExtractRequest
-	(*ExtractResponse)(nil),          // 3: zeek_runner.ExtractResponse
-	(*HealthCheckRequest)(nil),       // 4: zeek_runner.HealthCheckRequest
-	(*HealthCheckResponse)(nil),      // 5: zeek_runner.HealthCheckResponse
-	(*VersionCheckRequest)(nil),      // 6: zeek_runner.VersionCheckRequest
-	(*VersionCheckResponse)(nil),     // 7: zeek_runner.VersionCheckResponse
-	(*ZeekSyntaxCheckRequest)(nil),   // 8: zeek_runner.ZeekSyntaxCheckRequest
-	(*ZeekSyntaxCheckResponse)(nil),  // 9: zeek_runner.ZeekSyntaxCheckResponse
-	(*AsyncAnalyzeRequest)(nil),      // 10: zeek_runner.AsyncAnalyzeRequest
-	(*AsyncAnalyzeResponse)(nil),     // 11: zeek_runner.AsyncAnalyzeResponse
-	(*ExtractAsyncRequest)(nil),      // 12: zeek_runner.ExtractAsyncRequest
-	(*ExtractAsyncResponse)(nil),     // 13: zeek_runner.ExtractAsyncResponse
-	(*TaskStatusRequest)(nil),        // 14: zeek_runner.TaskStatusRequest
-	(*TaskStatusResponse)(nil),       // 15: zeek_runner.TaskStatusResponse
-	(*ParentTaskStatusRequest)(nil),  // 16: zeek_runner.ParentTaskStatusRequest
-	(*SubTaskSummary)(nil),           // 17: zeek_runner.SubTaskSummary
-	(*ParentTaskStatusResponse)(nil), // 18: zeek_runner.ParentTaskStatusResponse
-	(*ListScriptsRequest)(nil),       // 19: zeek_runner.ListScriptsRequest
-	(*ScriptInfo)(nil),               // 20: zeek_runner.ScriptInfo
-	(*ListScriptsResponse)(nil),      // 21: zeek_runner.ListScriptsResponse
-	(*GetScriptRequest)(nil),         // 22: zeek_runner.GetScriptRequest
-	(*ReloadScriptsRequest)(nil),     // 23: zeek_runner.ReloadScriptsRequest
-	(*ReloadScriptsResponse)(nil),    // 24: zeek_runner.ReloadScriptsResponse
+	(*AnalyzeRequest)(nil),            // 0: zeek_runner.AnalyzeRequest
+	(*AnalyzeResponse)(nil),           // 1: zeek_runner.AnalyzeResponse
+	(*ExtractRequest)(nil),            // 2: zeek_runner.ExtractRequest
+	(*ExtractResponse)(nil),           // 3: zeek_runner.ExtractResponse
+	(*HealthCheckRequest)(nil),        // 4: zeek_runner.HealthCheckRequest
+	(*HealthCheckResponse)(nil),       // 5: zeek_runner.HealthCheckResponse
+	(*VersionCheckRequest)(nil),       // 6: zeek_runner.VersionCheckRequest
+	(*VersionCheckResponse)(nil),      // 7: zeek_runner.VersionCheckResponse
+	(*ZeekSyntaxCheckRequest)(nil),    // 8: zeek_runner.ZeekSyntaxCheckRequest
+	(*ZeekSyntaxCheckResponse)(nil),   // 9: zeek_runner.ZeekSyntaxCheckResponse
+	(*AsyncAnalyzeRequest)(nil),       // 10: zeek_runner.AsyncAnalyzeRequest
+	(*AsyncAnalyzeResponse)(nil),      // 11: zeek_runner.AsyncAnalyzeResponse
+	(*ScriptTask)(nil),                // 12: zeek_runner.ScriptTask
+	(*AsyncAnalyzeBatchRequest)(nil),  // 13: zeek_runner.AsyncAnalyzeBatchRequest
+	(*AsyncAnalyzeBatchResponse)(nil), // 14: zeek_runner.AsyncAnalyzeBatchResponse
+	(*ExtractAsyncRequest)(nil),       // 15: zeek_runner.ExtractAsyncRequest
+	(*ExtractAsyncResponse)(nil),      // 16: zeek_runner.ExtractAsyncResponse
+	(*TaskStatusRequest)(nil),         // 17: zeek_runner.TaskStatusRequest
+	(*TaskStatusResponse)(nil),        // 18: zeek_runner.TaskStatusResponse
+	(*ParentTaskStatusRequest)(nil),   // 19: zeek_runner.ParentTaskStatusRequest
+	(*SubTaskSummary)(nil),            // 20: zeek_runner.SubTaskSummary
+	(*ParentTaskStatusResponse)(nil),  // 21: zeek_runner.ParentTaskStatusResponse
+	(*ListScriptsRequest)(nil),        // 22: zeek_runner.ListScriptsRequest
+	(*ScriptInfo)(nil),                // 23: zeek_runner.ScriptInfo
+	(*ListScriptsResponse)(nil),       // 24: zeek_runner.ListScriptsResponse
+	(*GetScriptRequest)(nil),          // 25: zeek_runner.GetScriptRequest
+	(*ReloadScriptsRequest)(nil),      // 26: zeek_runner.ReloadScriptsRequest
+	(*ReloadScriptsResponse)(nil),     // 27: zeek_runner.ReloadScriptsResponse
 }
 var file_api_pb_zeek_runner_proto_depIdxs = []int32{
-	17, // 0: zeek_runner.ParentTaskStatusResponse.subTasks:type_name -> zeek_runner.SubTaskSummary
-	20, // 1: zeek_runner.ListScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
-	20, // 2: zeek_runner.ReloadScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
-	0,  // 3: zeek_runner.ZeekAnalysisService.Analyze:input_type -> zeek_runner.AnalyzeRequest
-	10, // 4: zeek_runner.ZeekAnalysisService.AsyncAnalyze:input_type -> zeek_runner.AsyncAnalyzeRequest
-	2,  // 5: zeek_runner.ZeekAnalysisService.Extract:input_type -> zeek_runner.ExtractRequest
-	12, // 6: zeek_runner.ZeekAnalysisService.ExtractAsync:input_type -> zeek_runner.ExtractAsyncRequest
-	14, // 7: zeek_runner.ZeekAnalysisService.GetTaskStatus:input_type -> zeek_runner.TaskStatusRequest
-	16, // 8: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:input_type -> zeek_runner.ParentTaskStatusRequest
-	4,  // 9: zeek_runner.ZeekAnalysisService.HealthCheck:input_type -> zeek_runner.HealthCheckRequest
-	6,  // 10: zeek_runner.ZeekAnalysisService.VersionCheck:input_type -> zeek_runner.VersionCheckRequest
-	8,  // 11: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:input_type -> zeek_runner.ZeekSyntaxCheckRequest
-	19, // 12: zeek_runner.ZeekAnalysisService.ListScripts:input_type -> zeek_runner.ListScriptsRequest
-	22, // 13: zeek_runner.ZeekAnalysisService.GetScript:input_type -> zeek_runner.GetScriptRequest
-	23, // 14: zeek_runner.ZeekAnalysisService.ReloadScripts:input_type -> zeek_runner.ReloadScriptsRequest
-	1,  // 15: zeek_runner.ZeekAnalysisService.Analyze:output_type -> zeek_runner.AnalyzeResponse
-	11, // 16: zeek_runner.ZeekAnalysisService.AsyncAnalyze:output_type -> zeek_runner.AsyncAnalyzeResponse
-	3,  // 17: zeek_runner.ZeekAnalysisService.Extract:output_type -> zeek_runner.ExtractResponse
-	13, // 18: zeek_runner.ZeekAnalysisService.ExtractAsync:output_type -> zeek_runner.ExtractAsyncResponse
-	15, // 19: zeek_runner.ZeekAnalysisService.GetTaskStatus:output_type -> zeek_runner.TaskStatusResponse
-	18, // 20: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:output_type -> zeek_runner.ParentTaskStatusResponse
-	5,  // 21: zeek_runner.ZeekAnalysisService.HealthCheck:output_type -> zeek_runner.HealthCheckResponse
-	7,  // 22: zeek_runner.ZeekAnalysisService.VersionCheck:output_type -> zeek_runner.VersionCheckResponse
-	9,  // 23: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:output_type -> zeek_runner.ZeekSyntaxCheckResponse
-	21, // 24: zeek_runner.ZeekAnalysisService.ListScripts:output_type -> zeek_runner.ListScriptsResponse
-	20, // 25: zeek_runner.ZeekAnalysisService.GetScript:output_type -> zeek_runner.ScriptInfo
-	24, // 26: zeek_runner.ZeekAnalysisService.ReloadScripts:output_type -> zeek_runner.ReloadScriptsResponse
-	15, // [15:27] is the sub-list for method output_type
-	3,  // [3:15] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	12, // 0: zeek_runner.AsyncAnalyzeBatchRequest.scripts:type_name -> zeek_runner.ScriptTask
+	20, // 1: zeek_runner.ParentTaskStatusResponse.subTasks:type_name -> zeek_runner.SubTaskSummary
+	23, // 2: zeek_runner.ListScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
+	23, // 3: zeek_runner.ReloadScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
+	0,  // 4: zeek_runner.ZeekAnalysisService.Analyze:input_type -> zeek_runner.AnalyzeRequest
+	10, // 5: zeek_runner.ZeekAnalysisService.AsyncAnalyze:input_type -> zeek_runner.AsyncAnalyzeRequest
+	13, // 6: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:input_type -> zeek_runner.AsyncAnalyzeBatchRequest
+	2,  // 7: zeek_runner.ZeekAnalysisService.Extract:input_type -> zeek_runner.ExtractRequest
+	15, // 8: zeek_runner.ZeekAnalysisService.ExtractAsync:input_type -> zeek_runner.ExtractAsyncRequest
+	17, // 9: zeek_runner.ZeekAnalysisService.GetTaskStatus:input_type -> zeek_runner.TaskStatusRequest
+	19, // 10: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:input_type -> zeek_runner.ParentTaskStatusRequest
+	4,  // 11: zeek_runner.ZeekAnalysisService.HealthCheck:input_type -> zeek_runner.HealthCheckRequest
+	6,  // 12: zeek_runner.ZeekAnalysisService.VersionCheck:input_type -> zeek_runner.VersionCheckRequest
+	8,  // 13: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:input_type -> zeek_runner.ZeekSyntaxCheckRequest
+	22, // 14: zeek_runner.ZeekAnalysisService.ListScripts:input_type -> zeek_runner.ListScriptsRequest
+	25, // 15: zeek_runner.ZeekAnalysisService.GetScript:input_type -> zeek_runner.GetScriptRequest
+	26, // 16: zeek_runner.ZeekAnalysisService.ReloadScripts:input_type -> zeek_runner.ReloadScriptsRequest
+	1,  // 17: zeek_runner.ZeekAnalysisService.Analyze:output_type -> zeek_runner.AnalyzeResponse
+	11, // 18: zeek_runner.ZeekAnalysisService.AsyncAnalyze:output_type -> zeek_runner.AsyncAnalyzeResponse
+	14, // 19: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:output_type -> zeek_runner.AsyncAnalyzeBatchResponse
+	3,  // 20: zeek_runner.ZeekAnalysisService.Extract:output_type -> zeek_runner.ExtractResponse
+	16, // 21: zeek_runner.ZeekAnalysisService.ExtractAsync:output_type -> zeek_runner.ExtractAsyncResponse
+	18, // 22: zeek_runner.ZeekAnalysisService.GetTaskStatus:output_type -> zeek_runner.TaskStatusResponse
+	21, // 23: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:output_type -> zeek_runner.ParentTaskStatusResponse
+	5,  // 24: zeek_runner.ZeekAnalysisService.HealthCheck:output_type -> zeek_runner.HealthCheckResponse
+	7,  // 25: zeek_runner.ZeekAnalysisService.VersionCheck:output_type -> zeek_runner.VersionCheckResponse
+	9,  // 26: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:output_type -> zeek_runner.ZeekSyntaxCheckResponse
+	24, // 27: zeek_runner.ZeekAnalysisService.ListScripts:output_type -> zeek_runner.ListScriptsResponse
+	23, // 28: zeek_runner.ZeekAnalysisService.GetScript:output_type -> zeek_runner.ScriptInfo
+	27, // 29: zeek_runner.ZeekAnalysisService.ReloadScripts:output_type -> zeek_runner.ReloadScriptsResponse
+	17, // [17:30] is the sub-list for method output_type
+	4,  // [4:17] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_api_pb_zeek_runner_proto_init() }
@@ -2276,7 +2607,7 @@ func file_api_pb_zeek_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_pb_zeek_runner_proto_rawDesc), len(file_api_pb_zeek_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

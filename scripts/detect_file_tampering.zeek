@@ -1,5 +1,5 @@
-# 脚本唯一标识符 - 不要修改此ID
-const SCRIPT_ID = "DETECT_FILE_TAMPERING_v1";
+# SCRIPT_ID: DETECT_FILE_TAMPERING_v1
+# NoticeTypes: FileTampering::File_Tampering_Detected, FileTampering::Suspicious_File_Modification
 
 # 恶意行为检测脚本配置
 # 行为类型：文件篡改

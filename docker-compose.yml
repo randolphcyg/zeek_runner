@@ -8,10 +8,10 @@ x-zeek-runner-common:
   volumes:
     &zeek-runner-volumes
     - ./pcaps:/opt/zeek_runner/pcaps
-    - ./scripts:/opt/zeek_runner/scripts
-    - ./file_extract_script:/opt/zeek_runner/file_extract_script
+    - ./scripts:/opt/zeek_runner/scripts:ro
+    - ./file_extract_script:/opt/zeek_runner/file_extract_script:ro
     - ./extracted:/opt/zeek_runner/extracted
-    - ./custom:/usr/local/zeek/share/zeek/base/custom
+    - ./custom:/usr/local/zeek/share/zeek/base/custom:ro
     - ./config.local.yaml:/opt/zeek_runner/config.yaml:ro
   logging:
     &zeek-runner-logging

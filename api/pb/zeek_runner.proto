@@ -59,6 +59,14 @@ message HealthCheckResponse {
   string os = 8;
   string arch = 9;
   bool redis_ready = 10;
+  int64 queue_pending = 11;
+  int32 weighted_running = 12;
+  int32 weighted_capacity = 13;
+  double cpu_usage = 14;
+  double mem_usage = 15;
+  double disk_io_busy = 16;
+  int64 kafka_lag = 17;
+  bool accepting_jobs = 18;
 }
 
 // 版本检查请求
@@ -99,6 +107,29 @@ message AsyncAnalyzeResponse {
   string uuid = 2;             // UUID
   string status = 3;           // 任务状态
   string createTime = 4;       // 创建时间
+}
+
+message ScriptTask {
+  string uuid = 1;             // 子任务UUID
+  string scriptID = 2;         // 脚本ID
+  string scriptPath = 3;       // 脚本路径（可选，优先使用托管脚本）
+  string runMode = 4;          // 运行模式：scan/intel/extract
+  int32 weight = 5;            // 调度权重
+}
+
+message AsyncAnalyzeBatchRequest {
+  string taskID = 1;           // 父任务ID
+  string pcapID = 2;           // pcap文件ID
+  string pcapPath = 3;         // pcap文件路径
+  bool onlyNotice = 4;         // 是否只生成notice日志
+  repeated ScriptTask scripts = 5; // 脚本任务列表
+}
+
+message AsyncAnalyzeBatchResponse {
+  string taskID = 1;           // 父任务ID
+  int32 acceptedCount = 2;     // 已接受子任务数
+  int32 rejectedCount = 3;     // 拒绝子任务数
+  string status = 4;           // 状态
 }
 
 // 异步文件提取请求
@@ -201,6 +232,7 @@ message ScriptInfo {
   bool enabled = 12;
   bool valid = 13;
   string error = 14;
+  repeated string noticeTypes = 15;
 }
 
 message ListScriptsResponse {
@@ -224,6 +256,7 @@ message ReloadScriptsResponse {
 service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
   rpc AsyncAnalyze(AsyncAnalyzeRequest) returns (AsyncAnalyzeResponse) {}
+  rpc AsyncAnalyzeBatch(AsyncAnalyzeBatchRequest) returns (AsyncAnalyzeBatchResponse) {}
   rpc Extract(ExtractRequest) returns (ExtractResponse) {}
   rpc ExtractAsync(ExtractAsyncRequest) returns (ExtractAsyncResponse) {}
   rpc GetTaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}

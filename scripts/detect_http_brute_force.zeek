@@ -1,5 +1,5 @@
-# 脚本唯一标识符 - 不要修改此ID
-const SCRIPT_ID = "DETECT_HTTP_BRUTE_FORCE_v1";
+# SCRIPT_ID: DETECT_HTTP_BRUTE_FORCE_v1
+# NoticeTypes: HTTPBruteForce::HTTP_Brute_Force_Detected
 
 # 恶意行为检测脚本配置
 # 行为类型：HTTP暴力破解攻击

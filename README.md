@@ -97,10 +97,10 @@ docker run -d \
   -p 8000:8000 \
   -p 50051:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
+  -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek:ro \
   --log-driver json-file \
   --log-opt max-size=100m \
   --log-opt max-file=3 \
@@ -113,10 +113,10 @@ docker run -d \
   -p 50051:50051 \
   -e KAFKA_BROKERS="192.168.2.6:9092" \
   -e AUTH_TOKENS="token1,token2" \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek \
+  -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek:ro \
   zeek_runner:latest
 ```
 
@@ -331,7 +331,7 @@ docker run -d \
   -p 50051:50051 \
   -e CONFIG_FILE="/data/zeek_runner/config.yaml" \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
@@ -347,7 +347,7 @@ docker run -d \
   -p 8000:8000 \
   -p 50051:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
@@ -462,10 +462,10 @@ otel:
 - 适合实时性要求高、任务执行时间短的场景
 
 #### 异步模式（需要 Redis）
-- 上层服务下发任务后立即返回任务ID
-- 服务后台执行任务，上层服务通过任务ID查询状态
+- 上层服务通过 `AsyncAnalyzeBatch` 下发一个 pcap 的多个脚本后立即返回任务ID
+- 服务后台从 Redis Stream 主动领取任务并按资源容量执行，上层服务通过任务ID查询状态
 - 适合批量任务、长时间执行任务的场景
-- **支持分布式部署**：多个实例共享 Redis 队列
+- **支持分布式部署**：多个实例共享 Redis Stream consumer group，副本按自身容量 pull job
 
 ```shell
 # 启用异步模式需要配置 Redis（在 config.yaml 中配置）
@@ -474,7 +474,8 @@ docker run -d \
   -p 8000:8000 \
   -p 50051:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
+  -v /data/zeek_runner/file_extract_script:/data/zeek_runner/file_extract_script:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
@@ -482,7 +483,7 @@ docker run -d \
 
 ### 分布式部署
 
-服务支持多实例部署，通过 Redis 实现任务队列共享：
+服务支持多实例部署，通过 Redis Stream 实现任务队列共享和 lease/reclaim：
 
 #### 架构设计
 
@@ -502,9 +503,9 @@ docker run -d \
        └────────────────┼────────────────┘
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Redis 任务队列                                │
+│                    Redis Stream 控制面                            │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  zeek:task:queue  →  [task1, task2, task3, ...]         │   │
+│  │  zeek:task:stream →  batch job + uuids + pcap metadata  │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │  zeek:task:{id}  →  {task metadata & status}            │   │
@@ -514,10 +515,10 @@ docker run -d \
 
 #### 工作流程
 
-1. **任务提交**：任务推入 Redis 队列 (`RPUSH`)
-2. **任务抢占**：各实例通过 `BLPOP` 原子性获取任务
-3. **任务执行**：获取任务的实例执行分析
-4. **状态更新**：执行结果写入 Redis
+1. **任务提交**：`AsyncAnalyzeBatch` 创建多个 subtask，并写入 `zeek:task:stream`
+2. **任务领取**：各副本通过 `XREADGROUP/XAUTOCLAIM` 按容量主动领取 batch job
+3. **任务执行**：同一 pcap 的可归因脚本合并为一次 `zeek -Cr pcap script...`
+4. **状态输出**：subtask/parent final 事件写入 Kafka，失败时进入 Redis outbox 补发
 
 #### 部署示例
 
@@ -532,7 +533,7 @@ docker run -d \
   -p 18001:8000 \
   -p 50051:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
@@ -543,7 +544,7 @@ docker run -d \
   -p 18002:8000 \
   -p 50052:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
@@ -554,7 +555,7 @@ docker run -d \
   -p 18003:8000 \
   -p 50053:50051 \
   -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts \
+  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   zeek_runner:latest
@@ -724,7 +725,7 @@ curl -X POST \
   }' \
   http://localhost:8000/api/v1/analyze
 
-# 异步分析接口（需要 Redis）- 立即返回任务ID
+# 异步分析兼容接口（需要 Redis）- 单脚本会转为单脚本 batch
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "User-Agent: test" \
@@ -739,6 +740,9 @@ curl -X POST \
     "scriptID": "script-001"
   }' \
   http://localhost:8000/api/v1/analyze/async
+
+# 异步批量分析接口（推荐）通过 gRPC AsyncAnalyzeBatch 调用；
+# HTTP /api/v1/analyze/async 保留为单脚本兼容入口。
 
 # 查询任务状态
 curl -H "User-Agent: test" -H "Authorization: your-token" \
@@ -836,7 +840,7 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/Analyze
 
-# 异步分析接口（需要 Redis）- 立即返回任务ID
+# 异步分析兼容接口（需要 Redis）- 单脚本会转为单脚本 batch
 grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "taskID": "2334",
   "uuid": "d3db5f67-c441-56a4-9591-c30c3abab24f",
@@ -846,6 +850,18 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
   "scriptID": "script-001",
   "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek"
 }' localhost:50051 zeek_runner.ZeekAnalysisService/AsyncAnalyze
+
+# 异步批量分析接口（推荐）
+grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
+  "taskID": "2334",
+  "pcapID": "pcap-001",
+  "pcapPath": "/data/zeek_runner/pcaps/ssh_bruteforce_test.pcap",
+  "onlyNotice": true,
+  "scripts": [
+    {"uuid": "uuid-ssh", "scriptID": "DETECT_SSH_BRTFORCE_v1", "scriptPath": "/data/zeek_runner/scripts/detect_ssh_bruteforce.zeek", "runMode": "scan", "weight": 1},
+    {"uuid": "uuid-syn", "scriptID": "DETECT_SYN_FLOOD_v1", "scriptPath": "/data/zeek_runner/scripts/detect_syn_flood.zeek", "runMode": "scan", "weight": 1}
+  ]
+}' localhost:50051 zeek_runner.ZeekAnalysisService/AsyncAnalyzeBatch
 
 # 查询任务状态
 grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' -d '{
@@ -1151,11 +1167,13 @@ docker exec zeek_runner go test -v -tags=integration ./...
 
 ## 离线分析模式说明
 
-当前服务只支持离线 pcap 分析。Go 服务负责 API、任务并发、超时、Kafka/Redis 状态和结果事件；每个任务启动一次 Zeek：
+当前服务只支持离线 pcap 分析。Go 服务负责 API、Redis Stream 调度、资源权重、超时、Kafka/Redis 状态和结果事件；主路径是一个 pcap 的多个可归因脚本合并为一次 Zeek batch：
 
 ```shell
-zeek -Cr <pcapPath> <scriptPath> /usr/local/zeek/share/zeek/base/custom/config.zeek
+zeek -Cr <pcapPath> <scriptPath1> <scriptPath2> ... /usr/local/zeek/share/zeek/base/custom/config.zeek
 ```
+
+`AsyncAnalyze` 仍保留为兼容旧调用，内部会转为单脚本 batch；无法唯一归因的脚本会自动拆分为单脚本执行。
 
 文件提取任务使用轻量配置：
 

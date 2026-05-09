@@ -6,14 +6,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestScriptRegistry_ListAndMetadata(t *testing.T) {
 	root := t.TempDir()
-	content := `# script id
-const SCRIPT_ID = "SCRIPT_ONE";
+	content := `# SCRIPT_ID: SCRIPT_ONE
+# NoticeTypes: TestModule::TestNotice
 # 行为类型：命令执行
 # 行为分类：Web攻击
 # 行为描述：检测命令执行
@@ -51,6 +52,9 @@ event zeek_init() {}
 		script.Description != "检测命令执行" ||
 		script.AttackFeature != "shell payload" {
 		t.Fatalf("metadata not parsed: %+v", script)
+	}
+	if !reflect.DeepEqual(script.NoticeTypes, []string{"TestModule::TestNotice"}) {
+		t.Fatalf("notice types not parsed: %+v", script.NoticeTypes)
 	}
 	sum := sha256.Sum256([]byte(content))
 	if script.Checksum != hex.EncodeToString(sum[:]) {
@@ -128,6 +132,84 @@ func TestScriptRegistry_ResolvePath(t *testing.T) {
 	}
 	if _, err := registry.Resolve("NOPE", ""); !errors.Is(err, ErrScriptNotFound) {
 		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestScriptRegistry_LegacyScriptIDFallback(t *testing.T) {
+	root := t.TempDir()
+	path := writeTestScript(t, root, "legacy.zeek", `const SCRIPT_ID = "LEGACY_SCRIPT";
+module Legacy;
+export {
+    redef enum Notice::Type += {
+        ## fallback comments must be ignored
+        LegacyNotice,
+    };
+}
+`)
+
+	script, err := parseScriptInfo(path)
+	if err != nil {
+		t.Fatalf("parseScriptInfo failed: %v", err)
+	}
+	if script.ScriptID != "LEGACY_SCRIPT" {
+		t.Fatalf("legacy SCRIPT_ID fallback failed: %+v", script)
+	}
+	if !reflect.DeepEqual(script.NoticeTypes, []string{"LegacyNotice"}) {
+		t.Fatalf("enum notice fallback failed: %+v", script.NoticeTypes)
+	}
+}
+
+func TestScriptRegistry_CommentMetadataPreferred(t *testing.T) {
+	root := t.TempDir()
+	path := writeTestScript(t, root, "preferred.zeek", `# SCRIPT_ID: COMMENT_SCRIPT
+# NoticeTypes: Preferred::Notice, Preferred::Other
+const SCRIPT_ID = "LEGACY_SCRIPT";
+module Preferred;
+export {
+    redef enum Notice::Type += { FallbackNotice };
+}
+`)
+
+	script, err := parseScriptInfo(path)
+	if err != nil {
+		t.Fatalf("parseScriptInfo failed: %v", err)
+	}
+	if script.ScriptID != "COMMENT_SCRIPT" {
+		t.Fatalf("comment SCRIPT_ID should win over legacy const: %+v", script)
+	}
+	expected := []string{"Preferred::Notice", "Preferred::Other"}
+	if !reflect.DeepEqual(script.NoticeTypes, expected) {
+		t.Fatalf("comment NoticeTypes should win over enum fallback: got %+v want %+v", script.NoticeTypes, expected)
+	}
+}
+
+func TestRepositoryScriptsUseCommentMetadata(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("scripts", "*.zeek"))
+	if err != nil {
+		t.Fatalf("glob scripts failed: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("expected repository scripts")
+	}
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s failed: %v", path, err)
+		}
+		content := string(data)
+		if legacyScriptIDPattern.MatchString(content) {
+			t.Fatalf("%s still defines top-level const SCRIPT_ID", path)
+		}
+		if matches := commentScriptIDPattern.FindAllStringSubmatch(content, -1); len(matches) != 1 {
+			t.Fatalf("%s should have exactly one # SCRIPT_ID, got %d", path, len(matches))
+		}
+		if strings.Contains(content, "# BatchMode: disabled") {
+			continue
+		}
+		if noticeTypes := extractNoticeTypes(content); len(noticeTypes) == 0 {
+			t.Fatalf("%s should declare # NoticeTypes", path)
+		}
 	}
 }
 

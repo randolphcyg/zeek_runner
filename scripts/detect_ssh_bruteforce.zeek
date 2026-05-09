@@ -1,6 +1,5 @@
-# 脚本唯一标识符 - 不要修改此ID
-# 此ID用于在数据库中唯一标识此脚本，即使脚本内容更新也不会改变
-const SCRIPT_ID = "DETECT_SSH_BRTFORCE_v1";
+# SCRIPT_ID: DETECT_SSH_BRTFORCE_v1
+# NoticeTypes: SSH::Password_Guessing
 
 # 恶意行为检测脚本配置
 # 行为类型：SSH暴力破解攻击
