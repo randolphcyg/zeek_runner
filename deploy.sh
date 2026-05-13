@@ -7,10 +7,19 @@ echo ""
 
 if [ "$1" = "compose" ]; then
     echo "使用 Docker Compose 部署..."
-    docker-compose up -d
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE=(docker compose)
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE=(docker-compose)
+    else
+        echo "错误: 未找到 docker compose 或 docker-compose"
+        exit 1
+    fi
+
+    "${COMPOSE[@]}" up -d
     echo ""
     echo "=== 服务状态 ==="
-    docker-compose ps
+    "${COMPOSE[@]}" ps
     echo ""
     echo "=== 访问地址 ==="
     echo "HTTP API (负载均衡): http://localhost:18080"

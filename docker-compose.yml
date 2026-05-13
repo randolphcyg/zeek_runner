@@ -1,24 +1,35 @@
-x-zeek-runner-common:
-  &zeek-runner-common
+x-logging-default: &logging-default
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+x-logging-infra: &logging-infra
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+x-zeek-runner-common: &zeek-runner-common
   image: zeek_runner:latest
   restart: unless-stopped
   depends_on:
     redis:
       condition: service_healthy
-  volumes:
-    &zeek-runner-volumes
+  volumes: &zeek-runner-volumes
     - ./pcaps:/opt/zeek_runner/pcaps
     - ./scripts:/opt/zeek_runner/scripts:ro
     - ./file_extract_script:/opt/zeek_runner/file_extract_script:ro
     - ./extracted:/opt/zeek_runner/extracted
     - ./custom:/usr/local/zeek/share/zeek/base/custom:ro
     - ./config.local.yaml:/opt/zeek_runner/config.yaml:ro
-  logging:
-    &zeek-runner-logging
-    driver: json-file
-    options:
-      max-size: "100m"
-      max-file: "3"
+  logging: *logging-default
+  healthcheck:
+    test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/api/v1/healthz"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
 
 services:
   redis:
@@ -26,61 +37,39 @@ services:
     container_name: zeek_redis
     restart: unless-stopped
     ports:
-      - "6381:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
     command: redis-server /usr/local/etc/redis/redis.conf
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
+    logging: *logging-infra
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "xx", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  zeek_runner_1:
+  zeek_runner:
     <<: *zeek-runner-common
-    container_name: zeek_runner_1
-    ports:
-      - "18011:8000"
-      - "50061:50051"
-
-  zeek_runner_2:
-    <<: *zeek-runner-common
-    container_name: zeek_runner_2
-    ports:
-      - "18012:8000"
-      - "50062:50051"
-
-  zeek_runner_3:
-    <<: *zeek-runner-common
-    container_name: zeek_runner_3
-    ports:
-      - "18013:8000"
-      - "50063:50051"
+    deploy:
+      replicas: ${ZEEK_RUNNER_REPLICAS:-3}
+    expose:
+      - "8000"
+      - "50051"
 
   nginx:
     image: nginx:1.28-alpine
     container_name: zeek_nginx
     restart: unless-stopped
     depends_on:
-      - zeek_runner_1
-      - zeek_runner_2
-      - zeek_runner_3
+      zeek_runner:
+        condition: service_started
     ports:
-      - "18081:80"
-      - "50060:50050"
+      - "18080:80"
+      - "50050:50050"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
+    logging: *logging-infra
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s

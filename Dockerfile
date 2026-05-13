@@ -1,8 +1,8 @@
 # ===========================
 # Global Arguments
 # ===========================
-ARG ZEEK_VER=8.1.2
-ARG GO_VER=1.26.2-alpine
+ARG ZEEK_VER=8.0.8
+ARG GO_VER=1.26.3-alpine
 ARG ZEEK_KAFKA_VER=2.2
 ARG APT_MIRROR
 

@@ -41,7 +41,7 @@ curl -X POST \
     "pcapID": "pcap-dns-flood",
     "scriptID": "script-detect-dns-flood"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_http_cmd_injection.zeek
@@ -59,7 +59,7 @@ curl -X POST \
     "pcapID": "pcap-http-cmd-injection",
     "scriptID": "script-detect-http-cmd-injection"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_http_flood.zeek
@@ -77,7 +77,7 @@ curl -X POST \
     "pcapID": "pcap-http-flood",
     "scriptID": "script-detect-http-flood"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_http_suspicious_ua.zeek
@@ -95,7 +95,7 @@ curl -X POST \
     "pcapID": "pcap-http-suspicious-ua",
     "scriptID": "script-detect-http-suspicious-ua"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_http_webshell.zeek
@@ -113,7 +113,7 @@ curl -X POST \
     "pcapID": "pcap-http-webshell",
     "scriptID": "script-detect-http-webshell"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_ssh_bruteforce.zeek
@@ -131,7 +131,7 @@ curl -X POST \
     "pcapID": "pcap-ssh-bruteforce",
     "scriptID": "script-detect-ssh-bruteforce"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_ssh_file_transfer.zeek
@@ -149,7 +149,7 @@ curl -X POST \
     "pcapID": "pcap-ssh-file-transfer",
     "scriptID": "script-detect-ssh-file-transfer"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_syn_flood.zeek
@@ -167,7 +167,7 @@ curl -X POST \
     "pcapID": "pcap-syn-flood",
     "scriptID": "script-detect-syn-flood"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_slammer_worm.zeek
@@ -185,7 +185,7 @@ curl -X POST \
     "pcapID": "pcap-slammer-worm",
     "scriptID": "script-detect-slammer-worm"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_sqli_webshell.zeek
@@ -203,7 +203,7 @@ curl -X POST \
     "pcapID": "pcap-sqli-webshell",
     "scriptID": "script-detect-sqli-webshell"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_anomalous_traffic.zeek
@@ -228,7 +228,7 @@ curl -X POST \
     "pcapID": "pcap-anomalous-traffic",
     "scriptID": "script-detect-anomalous-traffic"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_file_tampering.zeek
@@ -252,7 +252,7 @@ curl -X POST \
     "pcapID": "pcap-file-tampering",
     "scriptID": "script-detect-file-tampering"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_http_brute_force.zeek
@@ -276,7 +276,7 @@ curl -X POST \
     "pcapID": "pcap-http-brute-force",
     "scriptID": "script-detect-http-brute-force"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ### detect_http_cmd_injection.zeek
@@ -297,7 +297,7 @@ curl -X POST \
     "pcapID": "pcap-http-cmd-injection",
     "scriptID": "script-detect-http-cmd-injection"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 ## 流量包生成脚本
@@ -343,7 +343,7 @@ curl -X POST \
     "taskID": "test_file_extract",
     "pcapID": "pcap-ext-001"
   }' \
-  http://localhost:18081/api/v1/extract
+  http://localhost:18080/api/v1/extract
 ```
 
 ## Offline validation matrix

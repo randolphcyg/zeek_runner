@@ -20,8 +20,8 @@ https://github.com/randolphcyg/zeek-kafka/
 运行Makefile即可
 
 # 基础镜像
-docker pull golang:1.26.2-alpine --platform linux/amd64
-docker pull zeek/zeek:8.1.2 --platform linux/amd64
+docker pull golang:1.26.3-alpine --platform linux/amd64
+docker pull zeek/zeek:8.0.8 --platform linux/amd64
 
 docker pull redis:8-alpine --platform linux/amd64
 docker pull nginx:1.28-alpine --platform linux/amd64
@@ -72,7 +72,7 @@ cd /data/zeek_runner/
 sudo vi /data/zeek_runner/config.yaml
 
 # 5. 重启服务
-docker-compose restart
+docker compose restart
 ```
 
 **离线包内容**：
@@ -155,20 +155,23 @@ docker logs --since 2024-01-01T00:00:00 zeek_runner
 
 #### Docker Compose 分布式部署
 
-推荐使用 Docker Compose 部署多实例，支持负载均衡和故障转移：
+推荐使用 Docker Compose 部署多实例，支持负载均衡和故障转移。
 
 ```shell
-# 启动所有服务（Redis + 3个zeek_runner实例 + Nginx负载均衡）
-docker-compose up -d
+# 启动所有服务（Redis + 3 个 zeek_runner 副本 + Nginx 负载均衡）
+docker compose up -d
 
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
-# 扩展实例数量（修改 docker-compose.yml 后）
-docker-compose up -d --scale zeek_runner_1=2
+# 扩展副本数量
+ZEEK_RUNNER_REPLICAS=5 docker compose up -d
 
 # 查看日志
-docker-compose logs -f zeek_runner_1
+docker compose logs -f zeek_runner
+
+# 单副本直连调试入口
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 ```
 
 **架构说明**：
@@ -183,8 +186,8 @@ docker-compose logs -f zeek_runner_1
          ┌───────────────────┼───────────────────┐
          ▼                   ▼                   ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  zeek_runner_1  │ │  zeek_runner_2  │ │  zeek_runner_3  │
-│  :18001 / :50051 │ │  :18002 / :50052 │ │  :18003 / :50053 │
+│  zeek_runner    │ │  zeek_runner    │ │  zeek_runner    │
+│  :8000 / :50051 │ │  :8000 / :50051 │ │  :8000 / :50051 │
 └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
          │                   │                   │
          └───────────────────┼───────────────────┘
@@ -202,9 +205,8 @@ docker-compose logs -f zeek_runner_1
 |------|------|
 | HTTP API (负载均衡) | `http://localhost:18080` |
 | gRPC (负载均衡) | `localhost:50050` |
-| 实例1 HTTP | `http://localhost:18001` |
-| 实例2 HTTP | `http://localhost:18002` |
-| 实例3 HTTP | `http://localhost:18003` |
+| 调试直连 HTTP | `http://localhost:18001`（需 `docker-compose.debug.yml`） |
+| 调试直连 gRPC | `localhost:50051`（需 `docker-compose.debug.yml`） |
 
 #### 环境变量说明
 
@@ -420,7 +422,7 @@ otel:
 
 ```shell
 # 启动本地开发环境（包含 Jaeger）
-docker-compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up -d
 
 # 访问 Jaeger UI
 open http://localhost:16686
@@ -522,43 +524,21 @@ docker run -d \
 
 #### 部署示例
 
-推荐使用 Docker Compose 部署，详见 `docker-compose.yml`。
+使用 Docker Compose 部署，详见 `docker-compose.yml`；生产/NAS 环境可使用 `docker-compose.dev.yml`。
 
-手动部署多实例：
+Compose 多副本部署：
 
 ```shell
-# 实例 1
-docker run -d \
-  --name zeek_runner_1 \
-  -p 18001:8000 \
-  -p 50051:50051 \
-  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
-  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
-  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:latest
+ZEEK_RUNNER_REPLICAS=3 docker compose up -d
+docker compose logs -f zeek_runner
+```
 
-# 实例 2
-docker run -d \
-  --name zeek_runner_2 \
-  -p 18002:8000 \
-  -p 50052:50051 \
-  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
-  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
-  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:latest
+单副本直连调试：
 
-# 实例 3
-docker run -d \
-  --name zeek_runner_3 \
-  -p 18003:8000 \
-  -p 50053:50051 \
-  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
-  -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
-  -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
-  -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:latest
+```shell
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
+curl http://localhost:18001/api/v1/healthz
+grpcurl -plaintext localhost:50051 list
 ```
 
 #### 负载均衡
@@ -689,7 +669,7 @@ curl http://localhost:8000/metrics
 curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:8000/api/v1/version/zeek
 ```
 
-**分布式部署**（通过 Nginx 负载均衡，端口 80）：
+**分布式部署**（通过 Nginx 负载均衡，端口 18080）：
 ```shell
 # 健康检查
 curl http://localhost:18080/api/v1/healthz
@@ -697,10 +677,8 @@ curl http://localhost:18080/api/v1/healthz
 # 版本检查
 curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:18080/api/v1/version/zeek
 
-# 直接访问实例（调试用）
-curl http://localhost:8001/api/v1/healthz  # 实例1
-curl http://localhost:8002/api/v1/healthz  # 实例2
-curl http://localhost:8003/api/v1/healthz  # 实例3
+# 单副本直连调试（需 docker-compose.debug.yml）
+curl http://localhost:18001/api/v1/healthz
 ```
 
 **完整测试命令**（单实例）：
@@ -820,10 +798,8 @@ grpcurl -plaintext -H 'user-agent: test' -H 'authorization: your-token' \
   -d '{"component": "zeek"}' \
   localhost:50050 zeek_runner.ZeekAnalysisService/VersionCheck
 
-# 直接访问实例（调试用）
-grpcurl -plaintext localhost:50051 list  # 实例1
-grpcurl -plaintext localhost:50052 list  # 实例2
-grpcurl -plaintext localhost:50053 list  # 实例3
+# 单副本直连调试（需 docker-compose.debug.yml）
+grpcurl -plaintext localhost:50051 list
 ```
 
 **完整测试命令**（单实例）：
@@ -934,7 +910,7 @@ echo "gRPC 批量测试完成"
 
 echo ""
 echo "=== 查看任务状态 ==="
-docker-compose logs --tail=50 zeek_runner_1 zeek_runner_2 zeek_runner_3 | grep -E "task|instance"
+docker compose logs --tail=50 zeek_runner | grep -E "task|instance"
 EOF
 
 chmod +x test_batch.sh
@@ -945,12 +921,12 @@ chmod +x test_batch.sh
 
 ```shell
 # 查看各实例日志，确认任务被分配到不同实例
-docker-compose logs -f zeek_runner_1 zeek_runner_2 zeek_runner_3
+docker compose logs -f zeek_runner
 
 # 输出示例：
-# zeek_runner_1 | {"level":"INFO","msg":"task","event":"started","taskID":"test-1","instance":"zeek_runner_1-1234"}
-# zeek_runner_2 | {"level":"INFO","msg":"task","event":"started","taskID":"test-2","instance":"zeek_runner_2-5678"}
-# zeek_runner_3 | {"level":"INFO","msg":"task","event":"started","taskID":"test-3","instance":"zeek_runner_3-9012"}
+# zeek_runner-zeek_runner-1 | {"level":"INFO","msg":"task","event":"started","taskID":"test-1","instance":"zeek_runner-1234"}
+# zeek_runner-zeek_runner-2 | {"level":"INFO","msg":"task","event":"started","taskID":"test-2","instance":"zeek_runner-5678"}
+# zeek_runner-zeek_runner-3 | {"level":"INFO","msg":"task","event":"started","taskID":"test-3","instance":"zeek_runner-9012"}
 ```
 
 #### 多副本性能验证
@@ -974,21 +950,21 @@ chmod +x test_performance.sh
 任务提交完成，耗时: 2 秒
 
 === 各实例处理的任务数 ===
-zeek_runner_1: 7 个任务
-zeek_runner_2: 6 个任务
-zeek_runner_3: 7 个任务
+zeek_runner-zeek_runner-1: 7 个任务
+zeek_runner-zeek_runner-2: 6 个任务
+zeek_runner-zeek_runner-3: 7 个任务
 总计: 20 个任务已开始处理
 
 === 各实例完成的任务数 ===
-zeek_runner_1: 7 个任务
-zeek_runner_2: 6 个任务
-zeek_runner_3: 7 个任务
+zeek_runner-zeek_runner-1: 7 个任务
+zeek_runner-zeek_runner-2: 6 个任务
+zeek_runner-zeek_runner-3: 7 个任务
 总计: 20 个任务已完成
 
 === 多副本效果验证 ===
-✅ zeek_runner_1 处理了 7 个任务
-✅ zeek_runner_2 处理了 6 个任务
-✅ zeek_runner_3 处理了 7 个任务
+✅ zeek_runner-zeek_runner-1 处理了 7 个任务
+✅ zeek_runner-zeek_runner-2 处理了 6 个任务
+✅ zeek_runner-zeek_runner-3 处理了 7 个任务
 
 ✅ 多副本生效！3 个实例参与处理任务
 
@@ -1112,14 +1088,20 @@ curl -X POST \
   http://localhost:8000/api/v1/extract/async
 ```
 
-### docker-compose部署
+### Docker Compose 部署
 ```shell
-docker-compose up -d
-docker-compose down
+# 默认环境
+docker compose up -d
+docker compose down
 
-本地
-docker-compose -f docker-compose.local.yml up -d
-docker-compose -f docker-compose.local.yml down
+# 本地开发 Compose
+docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml down
+
+# 生产/NAS Compose
+ZEEK_RUNNER_REPLICAS=3 docker compose -f docker-compose.dev.yml up -d
+ZEEK_RUNNER_REPLICAS=5 docker compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml down
 ```
 
 ## 单元测试
@@ -1239,7 +1221,7 @@ curl -X POST \
     "pcapID": "pcap-syn-flood-test",
     "scriptID": "script-detect-syn-flood"
   }' \
-  http://localhost:18081/api/v1/analyze
+  http://localhost:18080/api/v1/analyze
 ```
 
 替换 `pcapPath`、`scriptPath`、`uuid`、`taskID`、`pcapID`、`scriptID` 即可验证表中其他行为。
@@ -1279,7 +1261,7 @@ curl -X POST \
     "taskID": "test-file-extract",
     "pcapID": "pcap-file-extract-test"
   }' \
-  http://localhost:18081/api/v1/extract
+  http://localhost:18080/api/v1/extract
 ```
 
 ### Intel 情报库

@@ -2,6 +2,7 @@
 
 TOKEN="your-token-here"
 TASK_COUNT=20
+HTTP_URL="${HTTP_URL:-http://localhost:18080}"
 
 echo "=========================================="
 echo "   多副本并发性能测试"
@@ -9,7 +10,7 @@ echo "=========================================="
 echo ""
 
 echo "=== 提交 $TASK_COUNT 个异步任务 ==="
-echo "HTTP URL: http://localhost:18080 (负载均衡)"
+echo "HTTP URL: $HTTP_URL (负载均衡)"
 echo ""
 
 start_time=$(date +%s)
@@ -28,7 +29,7 @@ for i in $(seq 1 $TASK_COUNT); do
             \"pcapID\": \"pcap-$i\",
             \"scriptID\": \"script-$i\"
         }" \
-        "http://localhost:18080/api/v1/analyze/async" > /dev/null &
+        "$HTTP_URL/api/v1/analyze/async" > /dev/null &
 done
 
 wait
@@ -47,9 +48,14 @@ echo ""
 
 echo "=== 各实例处理的任务数 ==="
 total=0
-for instance in zeek_runner_1 zeek_runner_2 zeek_runner_3; do
-    count=$(docker-compose logs $instance 2>/dev/null | grep "perf-test" | grep "started" | wc -l | tr -d ' ')
-    echo "$instance: $count 个任务"
+containers=$(docker compose ps --format '{{.Name}}' zeek_runner 2>/dev/null)
+if [ -z "$containers" ]; then
+    containers=$(docker ps --format '{{.Names}}' --filter "name=zeek_runner")
+fi
+
+for container in $containers; do
+    count=$(docker logs "$container" 2>/dev/null | grep "perf-test" | grep "started" | wc -l | tr -d ' ')
+    echo "$container: $count 个任务"
     total=$((total + count))
 done
 echo "总计: $total 个任务已开始处理"
@@ -57,9 +63,9 @@ echo ""
 
 echo "=== 各实例完成的任务数 ==="
 completed=0
-for instance in zeek_runner_1 zeek_runner_2 zeek_runner_3; do
-    count=$(docker-compose logs $instance 2>/dev/null | grep "perf-test" | grep "completed" | wc -l | tr -d ' ')
-    echo "$instance: $count 个任务"
+for container in $containers; do
+    count=$(docker logs "$container" 2>/dev/null | grep "perf-test" | grep "completed" | wc -l | tr -d ' ')
+    echo "$container: $count 个任务"
     completed=$((completed + count))
 done
 echo "总计: $completed 个任务已完成"
@@ -67,11 +73,11 @@ echo ""
 
 echo "=== 多副本效果验证 ==="
 active_instances=0
-for instance in zeek_runner_1 zeek_runner_2 zeek_runner_3; do
-    count=$(docker-compose logs $instance 2>/dev/null | grep "perf-test" | grep "started" | wc -l | tr -d ' ')
+for container in $containers; do
+    count=$(docker logs "$container" 2>/dev/null | grep "perf-test" | grep "started" | wc -l | tr -d ' ')
     if [ "$count" -gt 0 ] 2>/dev/null; then
         active_instances=$((active_instances + 1))
-        echo "✅ $instance 处理了 $count 个任务"
+        echo "✅ $container 处理了 $count 个任务"
     fi
 done
 
@@ -90,4 +96,4 @@ fi
 
 echo ""
 echo "=== 查看详细日志 ==="
-echo "docker-compose logs -f zeek_runner_1 zeek_runner_2 zeek_runner_3"
+echo "docker compose logs -f zeek_runner"

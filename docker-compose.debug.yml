@@ -1,0 +1,7 @@
+services:
+  zeek_runner:
+    deploy:
+      replicas: 1
+    ports:
+      - "18001:8000"
+      - "50051:50051"
