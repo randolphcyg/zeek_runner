@@ -80,7 +80,8 @@ RUN \
         openssl \
         libzmq5 \
         tzdata \
-        git && \
+        git \
+        wget && \
     ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/* /tmp/* /var/tmp/*
