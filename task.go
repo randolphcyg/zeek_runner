@@ -173,6 +173,10 @@ func (tm *TaskManager) parentKey(taskID string) string {
 	return tm.parentKeyPrefix + taskID
 }
 
+func (tm *TaskManager) batchJobMarkerKey(jobID string) string {
+	return "zeek:batch_job:" + jobID
+}
+
 func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, error) {
 	task := newOfflineScanTask(req).newTaskRecord()
 
@@ -209,6 +213,37 @@ func (tm *TaskManager) CreateBatchTasks(ctx context.Context, req AnalyzeBatchReq
 	return tasks, nil
 }
 
+func (tm *TaskManager) CreateAndEnqueueBatchTasks(ctx context.Context, req AnalyzeBatchReq) ([]*Task, error) {
+	tasks := make([]*Task, 0, len(req.Scripts))
+	uuids := make([]string, 0, len(req.Scripts))
+	weight := 0
+	for _, script := range req.Scripts {
+		task := newOfflineScanTask(AnalyzeReq{
+			TaskID:     req.TaskID,
+			UUID:       script.UUID,
+			OnlyNotice: req.OnlyNotice,
+			PcapID:     req.PcapID,
+			PcapPath:   req.PcapPath,
+			ScriptID:   script.ScriptID,
+			ScriptPath: script.ScriptPath,
+		}).newTaskRecord()
+		task.RunMode = script.RunMode
+		task.Weight = normalizeTaskWeight(script.Weight)
+		tasks = append(tasks, task)
+		uuids = append(uuids, task.UUID)
+		weight += normalizeTaskWeight(task.Weight)
+	}
+	return tm.createAndEnqueueTasks(ctx, tasks, BatchQueueJob{
+		JobID:      req.TaskID + ":" + req.PcapID,
+		TaskID:     req.TaskID,
+		PcapID:     req.PcapID,
+		PcapPath:   req.PcapPath,
+		UUIDs:      uuids,
+		Weight:     weight,
+		OnlyNotice: req.OnlyNotice,
+	})
+}
+
 // CreateExtractTask 创建文件提取任务
 func (tm *TaskManager) CreateExtractTask(ctx context.Context, req ExtractReq) (*Task, error) {
 	task := newOfflineExtractTask(req).newTaskRecord()
@@ -221,6 +256,162 @@ func (tm *TaskManager) CreateExtractTask(ctx context.Context, req ExtractReq) (*
 
 	slog.Info("extract task created", "taskID", task.TaskID, "uuid", task.UUID)
 	return task, nil
+}
+
+func (tm *TaskManager) CreateAndEnqueueExtractTask(ctx context.Context, req ExtractReq) (*Task, error) {
+	task := newOfflineExtractTask(req).newTaskRecord()
+	tasks, err := tm.createAndEnqueueTasks(ctx, []*Task{task}, BatchQueueJob{
+		JobID:     task.UUID,
+		TaskID:    task.TaskID,
+		PcapID:    task.PcapID,
+		PcapPath:  task.PcapPath,
+		UUIDs:     []string{task.UUID},
+		Weight:    1,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return tasks[0], nil
+}
+
+func (tm *TaskManager) createAndEnqueueTasks(ctx context.Context, tasks []*Task, job BatchQueueJob) ([]*Task, error) {
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+	tm.ensureConsumerGroup(ctx)
+	if job.JobID == "" {
+		job.JobID = fmt.Sprintf("%s:%d", job.TaskID, time.Now().UnixNano())
+	}
+	if job.CreatedAt.IsZero() {
+		job.CreatedAt = time.Now()
+	}
+	if job.Weight <= 0 {
+		job.Weight = len(job.UUIDs)
+		if job.Weight <= 0 {
+			job.Weight = 1
+		}
+	}
+
+	taskPayloads := make([]string, 0, len(tasks))
+	keys := make([]string, 0, len(tasks)+3)
+	for _, task := range tasks {
+		data, err := json.Marshal(task)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal task: %w", err)
+		}
+		taskPayloads = append(taskPayloads, string(data))
+		keys = append(keys, tm.key(task.UUID))
+	}
+	keys = append(keys, tm.parentKey(tasks[0].TaskID), tm.streamKey, tm.batchJobMarkerKey(job.JobID))
+	jobPayload, err := json.Marshal(job)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal batch job: %w", err)
+	}
+	tasksPayload, err := json.Marshal(taskPayloads)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal task payloads: %w", err)
+	}
+
+	const createAndEnqueueScript = `
+local taskCount = tonumber(ARGV[1])
+local taskPayloads = cjson.decode(ARGV[2])
+local taskID = ARGV[3]
+local jobPayload = ARGV[4]
+local terminalTTLMillis = tonumber(ARGV[5])
+local parentKey = KEYS[taskCount + 1]
+local streamKey = KEYS[taskCount + 2]
+local jobMarkerKey = KEYS[taskCount + 3]
+local parentRaw = redis.call("GET", parentKey)
+local parent
+local rebuildParent = false
+if parentRaw then
+  parent = cjson.decode(parentRaw)
+else
+  parent = {TaskID = taskID, TotalCount = 0, PendingCount = 0, RunningCount = 0, SuccessCount = 0, FailedCount = 0, TimeoutCount = 0, Status = "pending"}
+  rebuildParent = true
+end
+
+local created = 0
+local activeExisting = false
+local results = {}
+for i = 1, taskCount do
+  local current = redis.call("GET", KEYS[i])
+  if current then
+    local task = cjson.decode(current)
+    if task.status == "pending" or task.status == "running" then
+      activeExisting = true
+    end
+    if rebuildParent then
+      parent.TotalCount = parent.TotalCount + 1
+      if task.status == "pending" then
+        parent.PendingCount = parent.PendingCount + 1
+      elseif task.status == "running" then
+        parent.RunningCount = parent.RunningCount + 1
+      elseif task.status == "success" then
+        parent.SuccessCount = parent.SuccessCount + 1
+      elseif task.status == "failed" then
+        parent.FailedCount = parent.FailedCount + 1
+      elseif task.status == "timeout" then
+        parent.TimeoutCount = parent.TimeoutCount + 1
+      end
+    end
+    results[i] = current
+  else
+    redis.call("SET", KEYS[i], taskPayloads[i])
+    parent.TotalCount = (parent.TotalCount or 0) + 1
+    parent.PendingCount = (parent.PendingCount or 0) + 1
+    created = created + 1
+    activeExisting = true
+    results[i] = taskPayloads[i]
+  end
+end
+
+if rebuildParent or created > 0 then
+  if parent.PendingCount > 0 or parent.RunningCount > 0 then
+    parent.Status = "running"
+  elseif parent.FailedCount == parent.TotalCount then
+    parent.Status = "failed"
+  elseif parent.FailedCount > 0 or parent.TimeoutCount > 0 then
+    parent.Status = "partial_failed"
+  else
+    parent.Status = "completed"
+  end
+  redis.call("SET", parentKey, cjson.encode(parent))
+  if parent.Status ~= "running" and terminalTTLMillis > 0 then
+    redis.call("PEXPIRE", parentKey, terminalTTLMillis)
+  end
+end
+
+local markerExists = redis.call("EXISTS", jobMarkerKey)
+if created > 0 or (markerExists == 0 and activeExisting) then
+  redis.call("XADD", streamKey, "*", "job", jobPayload)
+  redis.call("SET", jobMarkerKey, "1")
+end
+return results
+`
+
+	raw, err := tm.redis.Eval(ctx, createAndEnqueueScript, keys, len(tasks), string(tasksPayload), tasks[0].TaskID, string(jobPayload), tm.expiration.Milliseconds()).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create and enqueue tasks: %w", err)
+	}
+	values, ok := raw.([]interface{})
+	if !ok || len(values) != len(tasks) {
+		return nil, fmt.Errorf("unexpected create task response")
+	}
+	stored := make([]*Task, 0, len(values))
+	for _, value := range values {
+		payload, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected task payload")
+		}
+		var task Task
+		if err := json.Unmarshal([]byte(payload), &task); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal stored task: %w", err)
+		}
+		stored = append(stored, &task)
+	}
+	return stored, nil
 }
 
 func (tm *TaskManager) updateParentTaskStatus(ctx context.Context, taskID string, newStatus TaskStatus, oldStatus TaskStatus) {
@@ -267,7 +458,7 @@ func (tm *TaskManager) updateParentTaskStatus(ctx context.Context, taskID string
 	status.Status = tm.deriveParentStatus(&status)
 
 	data, _ = json.Marshal(status)
-	tm.redis.Set(ctx, key, data, tm.expiration)
+	tm.redis.Set(ctx, key, data, tm.parentStatusExpiration(status.Status))
 }
 
 func (tm *TaskManager) deriveParentStatus(s *ParentTaskStatus) string {
@@ -447,7 +638,25 @@ func (tm *TaskManager) saveTask(ctx context.Context, task *Task) error {
 		return fmt.Errorf("failed to marshal task: %w", err)
 	}
 
-	return tm.redis.Set(ctx, tm.key(task.UUID), data, tm.expiration).Err()
+	return tm.redis.Set(ctx, tm.key(task.UUID), data, tm.taskExpiration(task.Status)).Err()
+}
+
+func (tm *TaskManager) taskExpiration(status TaskStatus) time.Duration {
+	switch status {
+	case TaskStatusSuccess, TaskStatusFailed, TaskStatusTimeout, TaskStatusCanceled:
+		return tm.expiration
+	default:
+		return 0
+	}
+}
+
+func (tm *TaskManager) parentStatusExpiration(status string) time.Duration {
+	switch status {
+	case "completed", "partial_failed", "failed":
+		return tm.expiration
+	default:
+		return 0
+	}
 }
 
 func (tm *TaskManager) DeleteTask(ctx context.Context, uuid string) error {

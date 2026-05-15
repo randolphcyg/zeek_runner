@@ -231,14 +231,9 @@ func (s *Service) SubmitExtractAsyncTask(ctx context.Context, req ExtractReq) (*
 		return nil, errors.New("task manager not initialized, Redis required")
 	}
 
-	task, err := s.taskManager.CreateExtractTask(ctx, req)
+	task, err := s.taskManager.CreateAndEnqueueExtractTask(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
-	}
-
-	if err := s.taskManager.EnqueueTask(ctx, task.UUID); err != nil {
-		s.taskManager.SetFailed(ctx, task.UUID, "failed to enqueue")
-		return nil, fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
 	LogTaskEvent("submitted", task.TaskID, task.UUID,
@@ -328,30 +323,9 @@ func (s *Service) SubmitAsyncBatchTask(ctx context.Context, req AnalyzeBatchReq)
 		return nil, err
 	}
 
-	tasks, err := s.taskManager.CreateBatchTasks(ctx, req)
+	tasks, err := s.taskManager.CreateAndEnqueueBatchTasks(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
-	}
-
-	uuids := make([]string, 0, len(tasks))
-	weight := 0
-	for _, task := range tasks {
-		uuids = append(uuids, task.UUID)
-		weight += normalizeTaskWeight(task.Weight)
-	}
-	if err := s.taskManager.EnqueueBatchJob(ctx, BatchQueueJob{
-		JobID:      req.TaskID + ":" + req.PcapID,
-		TaskID:     req.TaskID,
-		PcapID:     req.PcapID,
-		PcapPath:   req.PcapPath,
-		UUIDs:      uuids,
-		Weight:     weight,
-		OnlyNotice: req.OnlyNotice,
-	}); err != nil {
-		for _, task := range tasks {
-			s.taskManager.SetFailed(ctx, task.UUID, "failed to enqueue")
-		}
-		return nil, fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
 	LogTaskEvent("submitted_batch", req.TaskID, req.PcapID,
