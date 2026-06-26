@@ -71,11 +71,12 @@ type extractEventPublisher struct {
 	writer    *kafka.Writer
 	brokers   string
 	topic     string
+	dialer    *kafka.Dialer
 	publishFn func(context.Context, string, string, any) error
 }
 
-func newExtractEventPublisher(brokers string) *extractEventPublisher {
-	writer := newKafkaJSONWriter(brokers, extractEventsTopic)
+func newExtractEventPublisher(brokers string, dialer *kafka.Dialer) *extractEventPublisher {
+	writer := newKafkaJSONWriter(brokers, extractEventsTopic, dialer)
 	if writer == nil {
 		return nil
 	}
@@ -84,6 +85,7 @@ func newExtractEventPublisher(brokers string) *extractEventPublisher {
 		writer:  writer,
 		brokers: brokers,
 		topic:   extractEventsTopic,
+		dialer:  dialer,
 	}
 }
 
@@ -119,7 +121,7 @@ func (p *extractEventPublisher) Publish(ctx context.Context, key string, eventTy
 			{Key: "analysisMode", Value: []byte("offline")},
 			{Key: "producer", Value: []byte(producerName)},
 		},
-	})
+	}, p.dialer)
 }
 
 func calculateFileSHA256(filePath string) (string, error) {

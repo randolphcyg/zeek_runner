@@ -1,43 +1,125 @@
 #!/bin/bash
 set -e
 
-# 获取 Git 提交哈希
+PLATFORM=""
+TAG_SUFFIX=""
+VERSION="${VERSION:-}"
+APT_MIRROR="${APT_MIRROR:-}"
+SAVE_IMAGE=1
+CLEAN=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      echo "Usage: $0 [OPTIONS]"
+      echo ""
+      echo "  (no options)           Build for native host architecture"
+      echo "  --ubuntu                Build linux/amd64 image for Ubuntu 24.04 x86_64"
+      echo "  --ubuntu-amd64          Same as --ubuntu"
+      echo "  --ubuntu-arm64          Build linux/arm64 image for Ubuntu 24.04 ARM64"
+      echo "  --platform PLATFORM     Cross-build for custom platform"
+      echo "  --version VERSION       Set version (default: 5.0)"
+      echo "  --apt-mirror URL        Override Ubuntu apt mirror"
+      echo "  --no-save               Build image but do not save tar.gz"
+      echo ""
+      echo "Examples:"
+      echo "  $0                              Build Docker for native arch"
+      echo "  $0 --ubuntu                     Build Docker for Ubuntu 24.04 x86_64"
+      echo "  $0 --ubuntu-arm64 --version 5.0 Build Docker for Ubuntu ARM64"
+      echo "  $0 --ubuntu --no-save           Build without saving tar.gz"
+      exit 0
+      ;;
+    --version)
+      VERSION="$2"; shift 2 ;;
+    --ubuntu|--ubuntu-amd64)
+      PLATFORM="linux/amd64"; TAG_SUFFIX="-amd64"; shift ;;
+    --ubuntu-arm64)
+      PLATFORM="linux/arm64"; TAG_SUFFIX="-arm64"; shift ;;
+    --platform)
+      PLATFORM="$2"
+      ARCH_TAG=$(echo "$2" | sed 's|linux/||')
+      TAG_SUFFIX="-$ARCH_TAG"; shift 2 ;;
+    --apt-mirror)
+      APT_MIRROR="$2"; shift 2 ;;
+    --no-save)
+      SAVE_IMAGE=0; shift ;;
+    -c|--clean)
+      CLEAN=true; shift ;;
+    *)
+      echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
+
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-
-# 获取当前时间
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-# 默认版本号
 DEFAULT_VERSION="5.0"
 
-# 读取版本号
-read -p "请输入版本号 (默认: $DEFAULT_VERSION): " VERSION
+if [ "$CLEAN" == true ]; then
+  echo "Cleaning build artifacts..."
+  rm -f zeek_runner*.tar.gz
+  echo "Clean complete!"
+  exit 0
+fi
+
+if [ -z "$VERSION" ] && [ -t 0 ]; then
+  read -p "Enter version (default: $DEFAULT_VERSION): " VERSION
+fi
 VERSION=${VERSION:-$DEFAULT_VERSION}
 
 echo "========================================"
-echo "  Zeek Runner 构建脚本"
+echo "  Zeek Runner Build"
 echo "========================================"
-echo "版本: $VERSION"
-echo "Git 提交: $GIT_COMMIT"
-echo "构建时间: $BUILD_TIME"
+echo "Version:    $VERSION"
+echo "Git Commit: $GIT_COMMIT"
+echo "Build Time: $BUILD_TIME"
+if [ -n "$PLATFORM" ]; then
+  echo "Platform:   $PLATFORM (cross-build via QEMU)"
+else
+  echo "Platform:   native ($(uname -m))"
+fi
+if [ -n "$APT_MIRROR" ]; then
+  echo "Apt Mirror: $APT_MIRROR"
+fi
 echo "========================================"
 
-# 构建镜像
-echo "正在构建 Docker 镜像..."
-docker build \
+echo ""
+echo "Building Docker image..."
+DOCKER_BUILD_CMD="docker build"
+
+if [ -n "$PLATFORM" ]; then
+  DOCKER_BUILD_CMD="$DOCKER_BUILD_CMD --platform $PLATFORM"
+fi
+
+APT_MIRROR_ARG=()
+if [ -n "$APT_MIRROR" ]; then
+  APT_MIRROR_ARG=(--build-arg "APT_MIRROR=$APT_MIRROR")
+fi
+
+$DOCKER_BUILD_CMD \
   --build-arg VERSION="$VERSION" \
   --build-arg BUILD_TIME="$BUILD_TIME" \
   --build-arg GIT_COMMIT="$GIT_COMMIT" \
-  -t zeek_runner:"$VERSION" \
-  -t zeek_runner:latest \
-  --platform linux/amd64 \
-  . 
+  "${APT_MIRROR_ARG[@]}" \
+  -t "zeek_runner:${VERSION}${TAG_SUFFIX}" \
+  -t "zeek_runner:latest${TAG_SUFFIX}" \
+  -f Dockerfile \
+  .
 
-# 打包镜像
-echo "正在打包镜像..."
-docker save zeek_runner:latest | gzip > zeek_runner.tar.gz
+TARBALL=""
+if [ "$SAVE_IMAGE" -eq 1 ]; then
+  echo ""
+  echo "Saving image to tarball..."
+  TARBALL="zeek_runner-${VERSION}${TAG_SUFFIX}.tar.gz"
+  docker save "zeek_runner:latest${TAG_SUFFIX}" | gzip > "$TARBALL"
+fi
 
+echo ""
 echo "========================================"
-echo "构建完成！"
-echo "镜像文件: zeek_runner.tar.gz"
+echo "Build complete!"
+if [ -n "$TARBALL" ]; then
+  echo "Image file: $TARBALL"
+  if [ -n "$PLATFORM" ]; then
+    echo "Deploy: scp $TARBALL user@ubuntu-server: && docker load < $TARBALL"
+  fi
+fi
 echo "========================================"

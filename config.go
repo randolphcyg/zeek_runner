@@ -28,6 +28,9 @@ type RedisConfig struct {
 }
 
 type KafkaConfig struct {
+	SaslMechanism string `yaml:"saslMechanism"` // SASL 认证机制，如 PLAIN；为空则不启用认证
+	SaslUsername  string `yaml:"saslUsername"`  // SASL 认证用户名
+	SaslPassword  string `yaml:"saslPassword"`  // SASL 认证密码
 	Brokers string `yaml:"brokers"`
 	Topic   string `yaml:"topic"`
 }
@@ -132,6 +135,7 @@ func (cm *ConfigManager) Reload() *Config {
 		"tokens_count", len(newCfg.HTTP.AuthTokens),
 		"redis_addr", newCfg.Redis.Addr,
 		"kafka_brokers", newCfg.Kafka.Brokers,
+		"kafka_sasl", newCfg.Kafka.SaslMechanism,
 	)
 
 	cm.config.Store(newCfg)
@@ -173,7 +177,10 @@ func loadConfig() *Config {
 			MaxRetries: 3,
 		},
 		Kafka: KafkaConfig{
-			Brokers: os.Getenv("KAFKA_BROKERS"),
+			Brokers:       os.Getenv("KAFKA_BROKERS"),
+			SaslMechanism: os.Getenv("KAFKA_SASL_MECHANISM"),
+			SaslUsername:  os.Getenv("KAFKA_SASL_USERNAME"),
+			SaslPassword:  os.Getenv("KAFKA_SASL_PASSWORD"),
 		},
 		Pool: PoolConfig{
 			Size:           getEnvInt("ZEEK_CONCURRENT_TASKS", 8),

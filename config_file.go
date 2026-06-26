@@ -96,6 +96,15 @@ func MergeConfigWithEnv(fileCfg *Config, envCfg *Config) *Config {
 	if fileCfg.Kafka.Brokers != "" && os.Getenv("KAFKA_BROKERS") == "" {
 		result.Kafka.Brokers = fileCfg.Kafka.Brokers
 	}
+	if fileCfg.Kafka.SaslMechanism != "" && os.Getenv("KAFKA_SASL_MECHANISM") == "" {
+		result.Kafka.SaslMechanism = fileCfg.Kafka.SaslMechanism
+	}
+	if fileCfg.Kafka.SaslUsername != "" && os.Getenv("KAFKA_SASL_USERNAME") == "" {
+		result.Kafka.SaslUsername = fileCfg.Kafka.SaslUsername
+	}
+	if fileCfg.Kafka.SaslPassword != "" && os.Getenv("KAFKA_SASL_PASSWORD") == "" {
+		result.Kafka.SaslPassword = fileCfg.Kafka.SaslPassword
+	}
 
 	if fileCfg.Pool.Size > 0 && os.Getenv("ZEEK_CONCURRENT_TASKS") == "" {
 		result.Pool.Size = fileCfg.Pool.Size

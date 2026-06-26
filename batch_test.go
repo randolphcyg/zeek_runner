@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/segmentio/kafka-go"
 )
 
 func TestPlanBatchRunGroupsBatchesOnlyUniquelyAttributedScripts(t *testing.T) {
@@ -23,7 +25,7 @@ func TestPlanBatchRunGroupsBatchesOnlyUniquelyAttributedScripts(t *testing.T) {
 		Pool: PoolConfig{Size: 8},
 		Zeek: ZeekConfig{ScriptRoot: root},
 	})
-	service := NewService(nil, cm, nil, nil)
+	service := NewService(nil, cm, nil, nil, &kafka.Dialer{})
 
 	tasks := []*Task{
 		{TaskID: "task", UUID: "u-a", PcapID: "pcap", PcapPath: "/tmp/a.pcap", ScriptID: "A", ScriptPath: filepath.Join(root, "a.zeek"), Status: TaskStatusPending},

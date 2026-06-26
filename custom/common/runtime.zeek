@@ -2,7 +2,6 @@
 @load base/frameworks/intel/input
 @load policy/frameworks/intel/seen
 @load policy/frameworks/intel/do_notice
-@load Seiso/Kafka
 
 global taskID = getenv("TASK_ID");
 global uuid = getenv("UUID");

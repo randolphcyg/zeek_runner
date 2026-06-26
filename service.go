@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/panjf2000/ants/v2"
+	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -162,7 +163,7 @@ type Service struct {
 	scriptRegistry        *scriptRegistry
 }
 
-func NewService(pool *ants.Pool, cm *ConfigManager, tm *TaskManager, fdm *FileDedupManager) *Service {
+func NewService(pool *ants.Pool, cm *ConfigManager, tm *TaskManager, fdm *FileDedupManager, kafkaDialer *kafka.Dialer) *Service {
 	cfg := cm.Get()
 	registry, err := newScriptRegistry(cfg.Zeek.ScriptRoot)
 	if err != nil {
@@ -179,15 +180,23 @@ func NewService(pool *ants.Pool, cm *ConfigManager, tm *TaskManager, fdm *FileDe
 		taskManager:           tm,
 		fileDedupMgr:          fdm,
 		scheduler:             &ResourceScheduler{},
-		analysisPublisher:     newAnalysisEventPublisher(cfg.Kafka.Brokers),
-		extractPublisher:      newExtractEventPublisher(cfg.Kafka.Brokers),
-		verificationPublisher: newVerificationLogPublisher(cfg.Kafka.Brokers),
+		analysisPublisher:     newAnalysisEventPublisher(cfg.Kafka.Brokers, kafkaDialer),
+		extractPublisher:      newExtractEventPublisher(cfg.Kafka.Brokers, kafkaDialer),
+		verificationPublisher: newVerificationLogPublisher(cfg.Kafka.Brokers, kafkaDialer),
 		scriptRegistry:        registry,
 	}
 }
 
 func (s *Service) getConfig() *Config {
 	return s.configManager.Get()
+}
+
+func (s *Service) SetTaskManager(tm *TaskManager) {
+	s.taskManager = tm
+}
+
+func (s *Service) SetFileDedupMgr(fdm *FileDedupManager) {
+	s.fileDedupMgr = fdm
 }
 
 func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*AnalyzeResp, error) {
@@ -434,6 +443,48 @@ func (s *Service) GetParentTaskStatus(ctx context.Context, taskID string) (*Pare
 	}
 
 	return status, nil
+}
+
+// GetTaskHits retrieves detection hit details for a task.
+// If uuid is provided, returns hits for that specific subtask.
+// If taskID is provided (and uuid is empty), returns hits for all subtasks of that parent task.
+func (s *Service) GetTaskHits(ctx context.Context, uuid, taskID, sourceType string, limit int) ([]TaskHitEvent, error) {
+	if s.taskManager == nil {
+		return nil, errors.New("task manager not initialized")
+	}
+
+	var hits []TaskHitEvent
+	var err error
+
+	if uuid != "" {
+		hits, err = s.taskManager.GetTaskHits(ctx, uuid)
+	} else if taskID != "" {
+		hits, err = s.taskManager.GetParentTaskHits(ctx, taskID)
+	} else {
+		return nil, errors.New("uuid or taskID is required")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter by sourceType if specified
+	if sourceType != "" {
+		filtered := make([]TaskHitEvent, 0, len(hits))
+		for _, hit := range hits {
+			if hit.SourceType == sourceType {
+				filtered = append(filtered, hit)
+			}
+		}
+		hits = filtered
+	}
+
+	// Apply limit
+	if limit > 0 && len(hits) > limit {
+		hits = hits[:limit]
+	}
+
+	return hits, nil
 }
 
 func (s *Service) StartTaskConsumer(ctx context.Context) {

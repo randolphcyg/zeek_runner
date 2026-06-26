@@ -194,7 +194,7 @@ func (s *Service) runZeekBatchCommand(parentCtx context.Context, first *Task, sc
 	defer cancel()
 
 	envSpec := newOfflineTaskFromStored(first)
-	env := envSpec.zeekEnv(cfg.Kafka.Brokers)
+	env := envSpec.zeekEnv()
 	env["UUID"] = first.TaskID
 	env["SCRIPT_ID"] = "BATCH"
 	env["SCRIPT_PATH"] = strings.Join(scriptPaths, ",")
@@ -268,6 +268,9 @@ func (s *Service) publishFilteredSubtaskHitEvents(ctx context.Context, opts zeek
 	if err != nil {
 		return err
 	}
+
+	var redisHits []TaskHitEvent
+
 	for _, hit := range noticeHits {
 		if matchNoticeOwner(hit.RuleType, noticeToUUID) != opts.uuid {
 			continue
@@ -285,10 +288,43 @@ func (s *Service) publishFilteredSubtaskHitEvents(ctx context.Context, opts zeek
 		hit.ScriptID = opts.scriptID
 		hit.ScriptPath = opts.scriptPath
 		hit.Verdict = "malicious"
+
+		redisHits = append(redisHits, TaskHitEvent{
+			EventID:    hit.EventID,
+			EventType:  hit.EventType,
+			EventTime:  hit.EventTime,
+			TaskID:     hit.TaskID,
+			UUID:       hit.UUID,
+			PcapID:     hit.PcapID,
+			PcapPath:   hit.PcapPath,
+			ScriptID:   hit.ScriptID,
+			ScriptPath: hit.ScriptPath,
+			Verdict:    hit.Verdict,
+			SourceType: hit.SourceType,
+			RuleType:   hit.RuleType,
+			RuleName:   hit.RuleName,
+			Message:    hit.Message,
+			Indicator:  hit.Indicator,
+			SrcIp:      hit.SrcIp,
+			SrcPort:    hit.SrcPort,
+			DstIp:      hit.DstIp,
+			DstPort:    hit.DstPort,
+			Proto:      hit.Proto,
+			UID:        hit.UID,
+		})
+
 		if err := s.publishAnalysisEvent(ctx, opts.taskID, "subtask_hit", hit); err != nil {
 			return err
 		}
 	}
+
+	// Store hits in Redis for later querying via MCP
+	if s.taskManager != nil && len(redisHits) > 0 {
+		if err := s.taskManager.SaveTaskHits(ctx, opts.uuid, opts.taskID, redisHits); err != nil {
+			slog.Warn("failed to save batch task hits to Redis", "uuid", opts.uuid, "err", err)
+		}
+	}
+
 	return nil
 }
 

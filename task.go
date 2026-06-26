@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -873,4 +874,112 @@ func (tm *TaskManager) AssignTask(ctx context.Context, uuid string) error {
 
 func (tm *TaskManager) GetInstanceID() string {
 	return tm.instanceID
+}
+
+// --- Hit Events Storage ---
+
+const hitsKeyPrefix = "zeek:task:hits:"
+
+func (tm *TaskManager) hitsKey(uuid string) string {
+	return hitsKeyPrefix + uuid
+}
+
+func (tm *TaskManager) parentHitsKey(taskID string) string {
+	return "zeek:parent_task:hits:" + taskID
+}
+
+// TaskHitEvent represents a single detection hit stored in Redis.
+type TaskHitEvent struct {
+	EventID    string `json:"eventID"`
+	EventType  string `json:"eventType"`
+	EventTime  string `json:"eventTime"`
+	TaskID     string `json:"taskID"`
+	UUID       string `json:"uuid"`
+	PcapID     string `json:"pcapID"`
+	PcapPath   string `json:"pcapPath"`
+	ScriptID   string `json:"scriptID"`
+	ScriptPath string `json:"scriptPath"`
+	Verdict    string `json:"verdict"`
+	SourceType string `json:"sourceType"` // "notice" or "intel"
+	RuleType   string `json:"ruleType"`
+	RuleName   string `json:"ruleName"`
+	Message    string `json:"message"`
+	Indicator  string `json:"indicator"`
+	SrcIp      string `json:"srcIp"`
+	SrcPort    int    `json:"srcPort"`
+	DstIp      string `json:"dstIp"`
+	DstPort    int    `json:"dstPort"`
+	Proto      string `json:"proto"`
+	UID        string `json:"uid"`
+}
+
+// SaveTaskHits stores hit events for a task in Redis.
+func (tm *TaskManager) SaveTaskHits(ctx context.Context, uuid, taskID string, hits []TaskHitEvent) error {
+	if tm == nil || tm.redis == nil || len(hits) == 0 {
+		return nil
+	}
+
+	pipe := tm.redis.Pipeline()
+
+	// Store hits indexed by uuid
+	data, err := json.Marshal(hits)
+	if err != nil {
+		return fmt.Errorf("failed to marshal hits: %w", err)
+	}
+	uuidKey := tm.hitsKey(uuid)
+	pipe.Set(ctx, uuidKey, data, tm.expiration)
+
+	// Also add uuid to parent task's hit index for parent-level queries
+	if taskID != "" {
+		parentKey := tm.parentHitsKey(taskID)
+		pipe.SAdd(ctx, parentKey, uuid)
+		pipe.Expire(ctx, parentKey, tm.expiration)
+	}
+
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+// GetTaskHits retrieves hit events for a specific task UUID.
+func (tm *TaskManager) GetTaskHits(ctx context.Context, uuid string) ([]TaskHitEvent, error) {
+	if tm == nil || tm.redis == nil {
+		return nil, errors.New("task manager not initialized")
+	}
+
+	data, err := tm.redis.Get(ctx, tm.hitsKey(uuid)).Bytes()
+	if err == redis.Nil {
+		return []TaskHitEvent{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get task hits: %w", err)
+	}
+
+	var hits []TaskHitEvent
+	if err := json.Unmarshal(data, &hits); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal hits: %w", err)
+	}
+	return hits, nil
+}
+
+// GetParentTaskHits retrieves all hit events for all subtasks of a parent task.
+func (tm *TaskManager) GetParentTaskHits(ctx context.Context, taskID string) ([]TaskHitEvent, error) {
+	if tm == nil || tm.redis == nil {
+		return nil, errors.New("task manager not initialized")
+	}
+
+	// Get all UUIDs that have hits for this parent task
+	uuids, err := tm.redis.SMembers(ctx, tm.parentHitsKey(taskID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parent task hit index: %w", err)
+	}
+
+	var allHits []TaskHitEvent
+	for _, uuid := range uuids {
+		hits, err := tm.GetTaskHits(ctx, uuid)
+		if err != nil {
+			continue
+		}
+		allHits = append(allHits, hits...)
+	}
+	return allHits, nil
 }

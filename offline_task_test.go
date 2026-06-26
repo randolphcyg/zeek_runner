@@ -14,7 +14,7 @@ func TestNewOfflineScanTask_ZeekEnv(t *testing.T) {
 		ExtractedFileMinSize: 8,
 	})
 
-	env := spec.zeekEnv("kafka:9092")
+	env := spec.zeekEnv()
 	if spec.taskType() != "MALICIOUS_SCAN" {
 		t.Fatalf("expected MALICIOUS_SCAN, got %s", spec.taskType())
 	}
@@ -30,6 +30,9 @@ func TestNewOfflineScanTask_ZeekEnv(t *testing.T) {
 	if env["EXTRACTED_FILE_MIN_SIZE"] != "8" {
 		t.Fatalf("expected EXTRACTED_FILE_MIN_SIZE=8, got %q", env["EXTRACTED_FILE_MIN_SIZE"])
 	}
+	if _, ok := env["KAFKA_BROKERS"]; ok {
+		t.Fatalf("KAFKA_BROKERS should not be set in zeek env")
+	}
 }
 
 func TestNewOfflineScanTask_IntelDetectionEnvAndConfig(t *testing.T) {
@@ -42,7 +45,7 @@ func TestNewOfflineScanTask_IntelDetectionEnvAndConfig(t *testing.T) {
 		ScriptPath: "/opt/zeek_runner/scripts/detect_intel_feed_hit.zeek",
 	})
 
-	env := spec.zeekEnv("kafka:9092")
+	env := spec.zeekEnv()
 	if env["ENABLE_OFFLINE_INTEL_REPLAY"] != "true" {
 		t.Fatalf("expected replay enabled for intel detection, got %q", env["ENABLE_OFFLINE_INTEL_REPLAY"])
 	}
@@ -62,7 +65,7 @@ func TestNewOfflineExtractTask_DefaultsAndEnv(t *testing.T) {
 		ExtractedFileMaxSize: 20,
 	})
 
-	env := spec.zeekEnv("kafka:9092")
+	env := spec.zeekEnv()
 	if spec.taskType() != "FILE_EXTRACT" {
 		t.Fatalf("expected FILE_EXTRACT, got %s", spec.taskType())
 	}

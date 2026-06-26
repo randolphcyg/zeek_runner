@@ -1,5 +1,5 @@
 redis:
-  addr: "192.168.x.xx:6379"
+  addr: "192.168.x.xx:6380"
   password: "change-me-in-production"
   db: 1
   poolSize: 100
@@ -14,6 +14,9 @@ redis:
 
 kafka:
   brokers: "192.168.x.xx:9092"
+  saslMechanism: "PLAIN"                  # SASL 认证机制，为空则不启用认证
+  saslUsername: "kafka"                   # SASL 认证用户名
+  saslPassword: "change-me-in-production" # SASL 认证密码
 
 pool:
   size: 30                                    # 本地 worker 池容量

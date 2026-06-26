@@ -252,6 +252,47 @@ message ReloadScriptsResponse {
   repeated ScriptInfo scripts = 4;
 }
 
+// 任务命中详情查询请求
+message GetTaskHitsRequest {
+  string uuid = 1;             // 子任务UUID
+  string taskID = 2;           // 父任务ID（可选，按父任务查询所有子任务命中）
+  string sourceType = 3;       // 过滤：notice 或 intel（可选）
+  int32 limit = 4;             // 返回数量限制（默认100）
+}
+
+// 单条命中事件
+message HitEvent {
+  string eventID = 1;
+  string eventType = 2;
+  string eventTime = 3;
+  string taskID = 4;
+  string uuid = 5;
+  string pcapID = 6;
+  string pcapPath = 7;
+  string scriptID = 8;
+  string scriptPath = 9;
+  string verdict = 10;
+  string sourceType = 11;      // notice 或 intel
+  string ruleType = 12;        // notice类型 或 intel where
+  string ruleName = 13;
+  string message = 14;
+  string indicator = 15;
+  string srcIp = 16;
+  int32 srcPort = 17;
+  string dstIp = 18;
+  int32 dstPort = 19;
+  string proto = 20;
+  string uid = 21;
+}
+
+// 任务命中详情查询响应
+message GetTaskHitsResponse {
+  string uuid = 1;
+  string taskID = 2;
+  int32 totalCount = 3;
+  repeated HitEvent hits = 4;
+}
+
 // gRPC服务定义
 service ZeekAnalysisService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
@@ -267,4 +308,5 @@ service ZeekAnalysisService {
   rpc ListScripts(ListScriptsRequest) returns (ListScriptsResponse) {}
   rpc GetScript(GetScriptRequest) returns (ScriptInfo) {}
   rpc ReloadScripts(ReloadScriptsRequest) returns (ReloadScriptsResponse) {}
+  rpc GetTaskHits(GetTaskHitsRequest) returns (GetTaskHitsResponse) {}
 }

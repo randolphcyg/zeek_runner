@@ -22,6 +22,9 @@ type App struct {
 	kafkaReady    bool
 	kafkaReadyMux sync.RWMutex
 
+	redisReady    bool
+	redisReadyMux sync.RWMutex
+
 	appCtx                 context.Context
 	scriptAutoReloadCancel context.CancelFunc
 	scriptAutoReloadMux    sync.Mutex
@@ -44,34 +47,12 @@ func NewApp() (*App, error) {
 
 	var taskManager *TaskManager
 	var fileDedupMgr *FileDedupManager
+	var redisReady bool
 	if cfg.Redis.Addr != "" {
-		poolCfg := &RedisPoolConfig{
-			PoolSize:     cfg.Redis.PoolSize,
-			MinIdleConns: cfg.Redis.MinIdleConns,
-			MaxRetries:   cfg.Redis.MaxRetries,
-			DialTimeout:  parseTimeout(cfg.Redis.DialTimeout),
-			ReadTimeout:  parseTimeout(cfg.Redis.ReadTimeout),
-			WriteTimeout: parseTimeout(cfg.Redis.WriteTimeout),
-			PoolTimeout:  parseTimeout(cfg.Redis.PoolTimeout),
-			MaxLifetime:  parseTimeout(cfg.Redis.ConnMaxLifetime),
-			MaxIdleTime:  parseTimeout(cfg.Redis.ConnMaxIdleTime),
-		}
-		taskManager = NewTaskManager(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, poolCfg)
-		if err := taskManager.HealthCheck(context.Background()); err != nil {
-			slog.Warn("Redis connection failed, task persistence disabled", "err", err)
-			taskManager = nil
-		} else {
-			slog.Info("Task manager initialized", "redis_addr", cfg.Redis.Addr, "pool_size", cfg.Redis.PoolSize)
-
-			fileDedupMgr = NewFileDedupManager(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB+1, poolCfg)
-			if err := fileDedupMgr.HealthCheck(context.Background()); err != nil {
-				slog.Warn("File dedup manager health check failed", "err", err)
-				fileDedupMgr = nil
-			} else {
-				slog.Info("File dedup manager initialized")
-			}
-		}
+		taskManager, fileDedupMgr, redisReady = initRedisManagers(cfg)
 	}
+
+	kafkaDialer := newKafkaDialer(cfg.Kafka.SaslMechanism, cfg.Kafka.SaslUsername, cfg.Kafka.SaslPassword)
 
 	app := &App{
 		ConfigManager: cm,
@@ -80,11 +61,12 @@ func NewApp() (*App, error) {
 		RateLimiter:   rl,
 		TaskManager:   taskManager,
 		FileDedupMgr:  fileDedupMgr,
-		Service:       NewService(pool, cm, taskManager, fileDedupMgr),
+		redisReady:    redisReady,
+		Service:       NewService(pool, cm, taskManager, fileDedupMgr, kafkaDialer),
 	}
 
 	if cfg.Kafka.Brokers != "" {
-		app.KafkaChecker = NewKafkaChecker(cfg.Kafka.Brokers)
+		app.KafkaChecker = NewKafkaChecker(cfg.Kafka.Brokers, kafkaDialer)
 	} else {
 		slog.Warn("KAFKA_BROKERS not set")
 	}
@@ -108,6 +90,48 @@ func (a *App) IsKafkaReady() bool {
 	return a.kafkaReady
 }
 
+func (a *App) IsRedisReady() bool {
+	a.redisReadyMux.RLock()
+	defer a.redisReadyMux.RUnlock()
+	return a.redisReady
+}
+
+func (a *App) SetRedisReady(status bool) {
+	a.redisReadyMux.Lock()
+	a.redisReady = status
+	a.redisReadyMux.Unlock()
+}
+
+func initRedisManagers(cfg *Config) (*TaskManager, *FileDedupManager, bool) {
+	poolCfg := &RedisPoolConfig{
+		PoolSize:     cfg.Redis.PoolSize,
+		MinIdleConns: cfg.Redis.MinIdleConns,
+		MaxRetries:   cfg.Redis.MaxRetries,
+		DialTimeout:  parseTimeout(cfg.Redis.DialTimeout),
+		ReadTimeout:  parseTimeout(cfg.Redis.ReadTimeout),
+		WriteTimeout: parseTimeout(cfg.Redis.WriteTimeout),
+		PoolTimeout:  parseTimeout(cfg.Redis.PoolTimeout),
+		MaxLifetime:  parseTimeout(cfg.Redis.ConnMaxLifetime),
+		MaxIdleTime:  parseTimeout(cfg.Redis.ConnMaxIdleTime),
+	}
+	taskManager := NewTaskManager(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, poolCfg)
+	if err := taskManager.HealthCheck(context.Background()); err != nil {
+		slog.Warn("Redis connection failed, will retry in background", "err", err)
+		return nil, nil, false
+	}
+	slog.Info("Task manager initialized", "redis_addr", cfg.Redis.Addr, "pool_size", cfg.Redis.PoolSize)
+
+	fileDedupMgr := NewFileDedupManager(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB+1, poolCfg)
+	if err := fileDedupMgr.HealthCheck(context.Background()); err != nil {
+		slog.Warn("File dedup manager health check failed", "err", err)
+		fileDedupMgr = nil
+	} else {
+		slog.Info("File dedup manager initialized")
+	}
+
+	return taskManager, fileDedupMgr, true
+}
+
 func (a *App) Start(ctx context.Context) {
 	if a.KafkaChecker != nil {
 		go a.KafkaChecker.Start(ctx, a.SetKafkaReady)
@@ -117,6 +141,10 @@ func (a *App) Start(ctx context.Context) {
 		a.Service.StartTaskConsumer(ctx)
 		a.Service.StartKafkaOutboxFlusher(ctx)
 		a.startScriptAutoReload(ctx)
+	}
+
+	if a.Config.Redis.Addr != "" && !a.IsRedisReady() {
+		go a.redisReconnectLoop(ctx)
 	}
 }
 
@@ -212,4 +240,31 @@ func scriptAutoReloadConfigChanged(oldCfg, newCfg ZeekConfig) bool {
 		oldCfg.AutoReloadScripts != newCfg.AutoReloadScripts ||
 		oldCfg.ScriptReloadDebounce != newCfg.ScriptReloadDebounce ||
 		oldCfg.ScriptReloadInterval != newCfg.ScriptReloadInterval
+}
+
+func (a *App) redisReconnectLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cfg := a.ConfigManager.Get()
+			tm, fdm, ok := initRedisManagers(cfg)
+			if !ok {
+				slog.Warn("Redis reconnect attempt failed, will retry", "interval", "5s")
+				continue
+			}
+
+			a.TaskManager = tm
+			a.FileDedupMgr = fdm
+			a.SetRedisReady(true)
+			a.Service.SetTaskManager(tm)
+			a.Service.SetFileDedupMgr(fdm)
+			slog.Info("Redis reconnected successfully, task persistence enabled")
+			return
+		}
+	}
 }

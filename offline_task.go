@@ -86,7 +86,7 @@ func (t offlineTaskSpec) taskType() string {
 	return string(t.kind)
 }
 
-func (t offlineTaskSpec) zeekEnv(kafkaBrokers string) map[string]string {
+func (t offlineTaskSpec) zeekEnv() map[string]string {
 	env := map[string]string{
 		"TASK_ID":             t.taskID,
 		"UUID":                t.uuid,
@@ -96,7 +96,6 @@ func (t offlineTaskSpec) zeekEnv(kafkaBrokers string) map[string]string {
 		"SCRIPT_PATH":         t.scriptPath,
 		"EXTRACTED_FILE_PATH": t.outputDir,
 		"ANALYSIS_MODE":       "offline",
-		"KAFKA_BROKERS":       kafkaBrokers,
 	}
 
 	if t.kind == offlineTaskExtract {
@@ -150,7 +149,7 @@ func (t offlineTaskSpec) zeekRunOptions(s *Service) zeekRunOptions {
 		scriptPath: t.scriptPath,
 		onlyNotice: t.onlyNotice,
 		outputDir:  t.outputDir,
-		env:        t.zeekEnv(s.getConfig().Kafka.Brokers),
+		env:        t.zeekEnv(),
 	}
 
 	return opts

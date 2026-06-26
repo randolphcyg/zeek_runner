@@ -76,8 +76,8 @@ func (s *GRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest
 	}
 	cfg := s.app.ConfigManager.Get()
 
-	redisReady := s.app.TaskManager != nil
-	if redisReady {
+	redisReady := s.app.IsRedisReady()
+	if s.app.TaskManager != nil {
 		if err := s.app.TaskManager.HealthCheck(ctx); err != nil {
 			redisReady = false
 		}
@@ -325,6 +325,55 @@ func (s *GRPCServer) ReloadScripts(ctx context.Context, req *pb.ReloadScriptsReq
 		resp.Scripts[i] = scriptInfoToPB(script)
 	}
 	return resp, nil
+}
+
+func (s *GRPCServer) GetTaskHits(ctx context.Context, req *pb.GetTaskHitsRequest) (*pb.GetTaskHitsResponse, error) {
+	limit := int(req.GetLimit())
+	if limit <= 0 {
+		limit = 100
+	}
+
+	hits, err := s.service.GetTaskHits(ctx, req.GetUuid(), req.GetTaskID(), req.GetSourceType(), limit)
+	if err != nil {
+		if strings.Contains(err.Error(), "not initialized") {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	pbHits := make([]*pb.HitEvent, 0, len(hits))
+	for _, hit := range hits {
+		pbHits = append(pbHits, &pb.HitEvent{
+			EventID:    hit.EventID,
+			EventType:  hit.EventType,
+			EventTime:  hit.EventTime,
+			TaskID:     hit.TaskID,
+			Uuid:       hit.UUID,
+			PcapID:     hit.PcapID,
+			PcapPath:   hit.PcapPath,
+			ScriptID:   hit.ScriptID,
+			ScriptPath: hit.ScriptPath,
+			Verdict:    hit.Verdict,
+			SourceType: hit.SourceType,
+			RuleType:   hit.RuleType,
+			RuleName:   hit.RuleName,
+			Message:    hit.Message,
+			Indicator:  hit.Indicator,
+			SrcIp:      hit.SrcIp,
+			SrcPort:    int32(hit.SrcPort),
+			DstIp:      hit.DstIp,
+			DstPort:    int32(hit.DstPort),
+			Proto:      hit.Proto,
+			Uid:        hit.UID,
+		})
+	}
+
+	return &pb.GetTaskHitsResponse{
+		Uuid:       req.GetUuid(),
+		TaskID:     req.GetTaskID(),
+		TotalCount: int32(len(pbHits)),
+		Hits:       pbHits,
+	}, nil
 }
 
 func scriptInfoToPB(script ScriptInfo) *pb.ScriptInfo {

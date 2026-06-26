@@ -34,11 +34,12 @@ type verificationLogPublisher struct {
 	writer    *kafka.Writer
 	brokers   string
 	topic     string
+	dialer    *kafka.Dialer
 	publishFn func(context.Context, string, string, any) error
 }
 
-func newVerificationLogPublisher(brokers string) *verificationLogPublisher {
-	writer := newKafkaJSONWriter(brokers, verificationLogsTopic)
+func newVerificationLogPublisher(brokers string, dialer *kafka.Dialer) *verificationLogPublisher {
+	writer := newKafkaJSONWriter(brokers, verificationLogsTopic, dialer)
 	if writer == nil {
 		return nil
 	}
@@ -47,6 +48,7 @@ func newVerificationLogPublisher(brokers string) *verificationLogPublisher {
 		writer:  writer,
 		brokers: brokers,
 		topic:   verificationLogsTopic,
+		dialer:  dialer,
 	}
 }
 
@@ -81,7 +83,7 @@ func (p *verificationLogPublisher) Publish(ctx context.Context, key string, even
 			{Key: "eventVersion", Value: []byte(eventVersion)},
 			{Key: "producer", Value: []byte(producerName)},
 		},
-	})
+	}, p.dialer)
 }
 
 func (s *Service) publishVerificationLogEvents(ctx context.Context, opts zeekRunOptions, workDir string) error {

@@ -10,14 +10,37 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/sasl/plain"
 )
+
+// newKafkaDialer 根据认证配置创建 Kafka Dialer；mechanism 为空则返回默认 Dialer（无认证）
+func newKafkaDialer(mechanism, username, password string) *kafka.Dialer {
+	dialer := &kafka.Dialer{
+		Timeout:   5 * time.Second,
+		DualStack: true,
+	}
+	if mechanism != "" {
+		switch strings.ToUpper(mechanism) {
+		case "PLAIN":
+			dialer.SASLMechanism = plain.Mechanism{
+				Username: username,
+				Password: password,
+			}
+			slog.Info("Kafka SASL/PLAIN 认证已启用", "username", username)
+		default:
+			slog.Error("不支持的 Kafka SASL 机制，忽略认证配置", "mechanism", mechanism)
+		}
+	}
+	return dialer
+}
 
 type KafkaChecker struct {
 	brokers string
+	dialer  *kafka.Dialer
 }
 
-func NewKafkaChecker(brokers string) *KafkaChecker {
-	return &KafkaChecker{brokers: brokers}
+func NewKafkaChecker(brokers string, dialer *kafka.Dialer) *KafkaChecker {
+	return &KafkaChecker{brokers: brokers, dialer: dialer}
 }
 
 func splitKafkaBrokers(brokers string) []string {
@@ -31,7 +54,7 @@ func splitKafkaBrokers(brokers string) []string {
 	return parts
 }
 
-func newKafkaJSONWriter(brokers string, topic string) *kafka.Writer {
+func newKafkaJSONWriter(brokers string, topic string, dialer *kafka.Dialer) *kafka.Writer {
 	parts := splitKafkaBrokers(brokers)
 	if len(parts) == 0 {
 		return nil
@@ -43,6 +66,7 @@ func newKafkaJSONWriter(brokers string, topic string) *kafka.Writer {
 		Balancer:     &kafka.Hash{},
 		RequiredAcks: kafka.RequireOne,
 		BatchTimeout: 10 * time.Millisecond,
+		Transport:    &kafka.Transport{SASL: dialer.SASLMechanism},
 	}
 }
 
@@ -53,13 +77,13 @@ func isUnknownTopicOrPartition(err error) bool {
 	return strings.Contains(err.Error(), "Unknown Topic Or Partition")
 }
 
-func ensureKafkaTopic(ctx context.Context, brokers string, topic string) error {
+func ensureKafkaTopic(ctx context.Context, brokers string, topic string, dialer *kafka.Dialer) error {
 	parts := splitKafkaBrokers(brokers)
 	if len(parts) == 0 {
 		return nil
 	}
 
-	conn, err := kafka.DialContext(ctx, "tcp", parts[0])
+	conn, err := dialer.DialContext(ctx, "tcp", parts[0])
 	if err != nil {
 		return err
 	}
@@ -71,7 +95,7 @@ func ensureKafkaTopic(ctx context.Context, brokers string, topic string) error {
 	}
 
 	controllerAddr := net.JoinHostPort(controller.Host, strconv.Itoa(controller.Port))
-	controllerConn, err := kafka.DialContext(ctx, "tcp", controllerAddr)
+	controllerConn, err := dialer.DialContext(ctx, "tcp", controllerAddr)
 	if err != nil {
 		return err
 	}
@@ -91,7 +115,7 @@ func ensureKafkaTopic(ctx context.Context, brokers string, topic string) error {
 	return err
 }
 
-func writeKafkaMessage(ctx context.Context, writer *kafka.Writer, brokers string, topic string, msg kafka.Message) error {
+func writeKafkaMessage(ctx context.Context, writer *kafka.Writer, brokers string, topic string, msg kafka.Message, dialer *kafka.Dialer) error {
 	if writer == nil {
 		return nil
 	}
@@ -104,7 +128,7 @@ func writeKafkaMessage(ctx context.Context, writer *kafka.Writer, brokers string
 		}
 
 		if isUnknownTopicOrPartition(err) {
-			if ensureErr := ensureKafkaTopic(ctx, brokers, topic); ensureErr != nil {
+			if ensureErr := ensureKafkaTopic(ctx, brokers, topic, dialer); ensureErr != nil {
 				lastErr = errors.Join(err, ensureErr)
 			} else {
 				lastErr = err
@@ -161,7 +185,7 @@ func (k *KafkaChecker) Start(ctx context.Context, onStatusChange func(bool)) {
 	check := func() {
 		dialCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
-		conn, err := kafka.DialContext(dialCtx, "tcp", k.brokers)
+		conn, err := k.dialer.DialContext(dialCtx, "tcp", k.brokers)
 		if err != nil {
 			onStatusChange(false)
 			slog.Warn("Kafka unreachable", "err", err)

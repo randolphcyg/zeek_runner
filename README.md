@@ -19,8 +19,37 @@ https://github.com/randolphcyg/zeek-kafka/
 # 更新proto
 运行Makefile即可
 
+# 使用 build.sh 构建（推荐）
+# 默认构建原生架构
+./build.sh
+
+# 构建 Ubuntu 24.04 x86_64 (linux/amd64) 镜像
+./build.sh --ubuntu
+
+# 构建 Ubuntu 24.04 ARM64 (linux/arm64) 镜像
+./build.sh --ubuntu-arm64
+
+# 指定版本号
+./build.sh --ubuntu --version 5.0
+
+# 指定国内 apt 仓库
+./build.sh --ubuntu --apt-mirror http://mirrors.aliyun.com
+
+# 构建但不导出 tar.gz
+./build.sh --ubuntu --no-save
+
+# 清理构建产物
+./build.sh --clean
+
+# 查看所有选项
+./build.sh --help
+```
+
+**手动 docker build（不推荐，建议使用 build.sh）**：
+
+```shell
 # 基础镜像
-docker pull golang:1.26.3-alpine --platform linux/amd64
+docker pull golang:1.26.4-alpine --platform linux/amd64
 docker pull zeek/zeek:8.0.8 --platform linux/amd64
 
 docker pull redis:8-alpine --platform linux/amd64
@@ -44,48 +73,36 @@ docker load -i jaeger.tar.gz
 
 #### 离线部署
 
-适用于无外网的服务器环境，一键打包所有镜像和配置：
+适用于无外网的服务器环境，使用 `build.sh` 一键构建并导出镜像：
 
 ```shell
-# 1. 在有网环境执行打包脚本
-chmod +x build_offline.sh
-./build_offline.sh [版本号]
+# 1. 在有网环境构建并导出镜像
+chmod +x build.sh
+./build.sh --ubuntu              # 构建 linux/amd64 镜像并导出 tar.gz
+./build.sh --ubuntu --version 5.0  # 指定版本号
 
-# 输出示例：
-# offline_package/
-# ├── zeek_runner_latest.tar.gz    # zeek_runner 镜像
-# ├── redis.tar.gz                 # Redis 镜像
-# ├── nginx.tar.gz                 # Nginx 镜像
-# ├── docker-compose.yml           # 部署配置
-# ├── nginx.conf                   # 负载均衡配置
-# ├── config.yaml                  # 服务配置示例
-# └── deploy.sh                    # 部署脚本
+# 构建产物示例：
+# zeek_runner-5.0-amd64.tar.gz   # zeek_runner 镜像
 
-# 2.# 2. 传输到目标服务器
-scp -r offline_package user@server:/data/zeek_runner/
+# 2. 传输到目标服务器
+scp zeek_runner-5.0-amd64.tar.gz user@server:/data/zeek_runner/
 
-# 3. 在目标服务器执行部署
-cd /data/zeek_runner/
-./deploy.sh
+# 3. 在目标服务器加载镜像
+docker load -i zeek_runner-5.0-amd64.tar.gz
 
 # 4. 编辑配置文件（设置 Redis 密码、Kafka 地址等）
 sudo vi /data/zeek_runner/config.yaml
 
-# 5. 重启服务
-docker compose restart
+# 5. 启动服务
+docker compose up -d
 ```
 
-**离线包内容**：
+**其他依赖镜像导出**（如需离线部署 Redis、Nginx、Jaeger）：
 
-| 文件 | 大小 | 说明 |
-|------|------|------|
-| zeek_runner_*.tar.gz | ~800MB | 服务镜像 |
-| redis.tar.gz | ~30MB | Redis 镜像 |
-| nginx.tar.gz | ~25MB | Nginx 镜像 |
-| docker-compose.yml | - | 部署配置 |
-| config.yaml | - | 服务配置 |
-# 解压镜像
-docker load -i zeek_runner.tar.gz
+```shell
+docker save redis:8-alpine | gzip > redis.tar.gz
+docker save nginx:1.28-alpine | gzip > nginx.tar.gz
+docker save jaegertracing/jaeger:2.17.0 | gzip > jaeger.tar.gz
 ```
 
 #### 运行
@@ -241,13 +258,12 @@ docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 
 ```yaml
 redis:
-  addr: "redis:6379"
+  addr: "redis:6380"
   password: "your-secure-password"
   db: 0
 
 kafka:
   brokers: "192.168.2.6:9092"
-  topic: "zeek_logs"
 
 pool:
   size: 16
@@ -1169,18 +1185,16 @@ zeek -Cr <pcapPath> /opt/zeek_runner/file_extract_script/extract_file.zeek /usr/
 
 | 入口 | 用途 | 加载内容 |
 |------|------|----------|
-| `custom/config.zeek` | 恶意行为检测、intel 命中 | runtime、task status、intel feeds、Kafka、notice、offline intel replay |
-| `custom/config_extract.zeek` | 文件提取 | runtime、task status、Kafka |
+| `custom/config.zeek` | 恶意行为检测、intel 命中 | runtime、task status、intel feeds、notice、offline intel replay |
+| `custom/config_extract.zeek` | 文件提取 | runtime、task status |
 
-Kafka topic 默认保持兼容，可通过环境变量覆盖：
+Zeek 脚本将日志写入本地 `.log` 文件，zeek_runner Go 代码读取后发布结构化事件到 Kafka：
 
-| 环境变量 | 默认值 |
-|---------|--------|
-| `ZEEK_KAFKA_DEFAULT_TOPIC` | `zeek_logs` |
-| `ZEEK_KAFKA_NOTICE_TOPIC` | `zeek_raw_notice` |
-| `ZEEK_KAFKA_INTEL_TOPIC` | `zeek_raw_intel` |
-| `ZEEK_KAFKA_TASK_STATUS_TOPIC` | `zeek_raw_task_status` |
-| `ZEEK_KAFKA_PRODUCER` | `zeek_raw` |
+| Topic | 事件类型 | 说明 |
+|-------|---------|------|
+| `zeek_detection_events` | `subtask_hit` / `subtask_completed` / `subtask_failed` / `parent_completed` / `parent_failed` | 检测结果 |
+| `zeek_verification_logs` | `verification_log` | 验证模式全量日志 |
+| `zeek_extract_events` | `file_extracted` / `task_completed` / `task_failed` | 文件提取事件 |
 
 ### 可复现恶意行为样本
 
@@ -1197,12 +1211,12 @@ Kafka topic 默认保持兼容，可通过环境变量覆盖：
 | HTTP Flood | `detect_http_flood.zeek` | `http_flood_test.pcap` | `HTTP_Flood_Detected` notice |
 | 可疑 User-Agent | `detect_http_suspicious_ua.zeek` | `http_suspicious_ua_test.pcap` | suspicious UA notice |
 | WebShell 上传 | `detect_http_webshell.zeek` | `http_webshell_test.pcap` | webshell upload notice |
-| Intel 情报命中 | `detect_intel_feed_hit.zeek` | `intel_hit_test.pcap` | `intel.log` / `zeek_raw_intel` 命中 |
+| Intel 情报命中 | `detect_intel_feed_hit.zeek` | `intel_hit_test.pcap` | `intel.log` 命中 / `zeek_detection_events` subtask_hit |
 | Slammer Worm | `detect_slammer_worm.zeek` | `slammer_worm_test.pcap` | Slammer notice |
 | SQLi WebShell | `detect_sqli_webshell.zeek` | `sqli_webshell_test.pcap` | SQLi/webshell notice |
 | SSH 暴力破解 | `detect_ssh_bruteforce.zeek` | `ssh_bruteforce_test.pcap` | `SSH::Password_Guessing` notice |
 | SSH 大文件传输 | `detect_ssh_file_transfer.zeek` | `ssh_file_transfer_test.pcap` | `Suspicious_SCP_Transfer` notice |
-| SYN Flood | `detect_syn_flood.zeek` | `syn_flood_test.pcap` | `notice.log` / `zeek_raw_notice` 中出现 `SynFlood::SynFlood` |
+| SYN Flood | `detect_syn_flood.zeek` | `syn_flood_test.pcap` | `notice.log` 中出现 `SynFlood::SynFlood` / `zeek_detection_events` subtask_hit |
 | 文件提取 | `extract_file.zeek` | `file_extract_test.pcap` | `zeek_extract_events` 中出现提取文件事件，输出目录有 `firmware.bin` |
 
 通用调用示例：

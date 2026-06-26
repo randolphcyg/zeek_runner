@@ -2261,6 +2261,349 @@ func (x *ReloadScriptsResponse) GetScripts() []*ScriptInfo {
 	return nil
 }
 
+// 任务命中详情查询请求
+type GetTaskHitsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`             // 子任务UUID
+	TaskID        string                 `protobuf:"bytes,2,opt,name=taskID,proto3" json:"taskID,omitempty"`         // 父任务ID（可选，按父任务查询所有子任务命中）
+	SourceType    string                 `protobuf:"bytes,3,opt,name=sourceType,proto3" json:"sourceType,omitempty"` // 过滤：notice 或 intel（可选）
+	Limit         int32                  `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`          // 返回数量限制（默认100）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTaskHitsRequest) Reset() {
+	*x = GetTaskHitsRequest{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTaskHitsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTaskHitsRequest) ProtoMessage() {}
+
+func (x *GetTaskHitsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTaskHitsRequest.ProtoReflect.Descriptor instead.
+func (*GetTaskHitsRequest) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *GetTaskHitsRequest) GetUuid() string {
+	if x != nil {
+		return x.Uuid
+	}
+	return ""
+}
+
+func (x *GetTaskHitsRequest) GetTaskID() string {
+	if x != nil {
+		return x.TaskID
+	}
+	return ""
+}
+
+func (x *GetTaskHitsRequest) GetSourceType() string {
+	if x != nil {
+		return x.SourceType
+	}
+	return ""
+}
+
+func (x *GetTaskHitsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// 单条命中事件
+type HitEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventID       string                 `protobuf:"bytes,1,opt,name=eventID,proto3" json:"eventID,omitempty"`
+	EventType     string                 `protobuf:"bytes,2,opt,name=eventType,proto3" json:"eventType,omitempty"`
+	EventTime     string                 `protobuf:"bytes,3,opt,name=eventTime,proto3" json:"eventTime,omitempty"`
+	TaskID        string                 `protobuf:"bytes,4,opt,name=taskID,proto3" json:"taskID,omitempty"`
+	Uuid          string                 `protobuf:"bytes,5,opt,name=uuid,proto3" json:"uuid,omitempty"`
+	PcapID        string                 `protobuf:"bytes,6,opt,name=pcapID,proto3" json:"pcapID,omitempty"`
+	PcapPath      string                 `protobuf:"bytes,7,opt,name=pcapPath,proto3" json:"pcapPath,omitempty"`
+	ScriptID      string                 `protobuf:"bytes,8,opt,name=scriptID,proto3" json:"scriptID,omitempty"`
+	ScriptPath    string                 `protobuf:"bytes,9,opt,name=scriptPath,proto3" json:"scriptPath,omitempty"`
+	Verdict       string                 `protobuf:"bytes,10,opt,name=verdict,proto3" json:"verdict,omitempty"`
+	SourceType    string                 `protobuf:"bytes,11,opt,name=sourceType,proto3" json:"sourceType,omitempty"` // notice 或 intel
+	RuleType      string                 `protobuf:"bytes,12,opt,name=ruleType,proto3" json:"ruleType,omitempty"`     // notice类型 或 intel where
+	RuleName      string                 `protobuf:"bytes,13,opt,name=ruleName,proto3" json:"ruleName,omitempty"`
+	Message       string                 `protobuf:"bytes,14,opt,name=message,proto3" json:"message,omitempty"`
+	Indicator     string                 `protobuf:"bytes,15,opt,name=indicator,proto3" json:"indicator,omitempty"`
+	SrcIp         string                 `protobuf:"bytes,16,opt,name=srcIp,proto3" json:"srcIp,omitempty"`
+	SrcPort       int32                  `protobuf:"varint,17,opt,name=srcPort,proto3" json:"srcPort,omitempty"`
+	DstIp         string                 `protobuf:"bytes,18,opt,name=dstIp,proto3" json:"dstIp,omitempty"`
+	DstPort       int32                  `protobuf:"varint,19,opt,name=dstPort,proto3" json:"dstPort,omitempty"`
+	Proto         string                 `protobuf:"bytes,20,opt,name=proto,proto3" json:"proto,omitempty"`
+	Uid           string                 `protobuf:"bytes,21,opt,name=uid,proto3" json:"uid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HitEvent) Reset() {
+	*x = HitEvent{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HitEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HitEvent) ProtoMessage() {}
+
+func (x *HitEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HitEvent.ProtoReflect.Descriptor instead.
+func (*HitEvent) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *HitEvent) GetEventID() string {
+	if x != nil {
+		return x.EventID
+	}
+	return ""
+}
+
+func (x *HitEvent) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *HitEvent) GetEventTime() string {
+	if x != nil {
+		return x.EventTime
+	}
+	return ""
+}
+
+func (x *HitEvent) GetTaskID() string {
+	if x != nil {
+		return x.TaskID
+	}
+	return ""
+}
+
+func (x *HitEvent) GetUuid() string {
+	if x != nil {
+		return x.Uuid
+	}
+	return ""
+}
+
+func (x *HitEvent) GetPcapID() string {
+	if x != nil {
+		return x.PcapID
+	}
+	return ""
+}
+
+func (x *HitEvent) GetPcapPath() string {
+	if x != nil {
+		return x.PcapPath
+	}
+	return ""
+}
+
+func (x *HitEvent) GetScriptID() string {
+	if x != nil {
+		return x.ScriptID
+	}
+	return ""
+}
+
+func (x *HitEvent) GetScriptPath() string {
+	if x != nil {
+		return x.ScriptPath
+	}
+	return ""
+}
+
+func (x *HitEvent) GetVerdict() string {
+	if x != nil {
+		return x.Verdict
+	}
+	return ""
+}
+
+func (x *HitEvent) GetSourceType() string {
+	if x != nil {
+		return x.SourceType
+	}
+	return ""
+}
+
+func (x *HitEvent) GetRuleType() string {
+	if x != nil {
+		return x.RuleType
+	}
+	return ""
+}
+
+func (x *HitEvent) GetRuleName() string {
+	if x != nil {
+		return x.RuleName
+	}
+	return ""
+}
+
+func (x *HitEvent) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *HitEvent) GetIndicator() string {
+	if x != nil {
+		return x.Indicator
+	}
+	return ""
+}
+
+func (x *HitEvent) GetSrcIp() string {
+	if x != nil {
+		return x.SrcIp
+	}
+	return ""
+}
+
+func (x *HitEvent) GetSrcPort() int32 {
+	if x != nil {
+		return x.SrcPort
+	}
+	return 0
+}
+
+func (x *HitEvent) GetDstIp() string {
+	if x != nil {
+		return x.DstIp
+	}
+	return ""
+}
+
+func (x *HitEvent) GetDstPort() int32 {
+	if x != nil {
+		return x.DstPort
+	}
+	return 0
+}
+
+func (x *HitEvent) GetProto() string {
+	if x != nil {
+		return x.Proto
+	}
+	return ""
+}
+
+func (x *HitEvent) GetUid() string {
+	if x != nil {
+		return x.Uid
+	}
+	return ""
+}
+
+// 任务命中详情查询响应
+type GetTaskHitsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
+	TaskID        string                 `protobuf:"bytes,2,opt,name=taskID,proto3" json:"taskID,omitempty"`
+	TotalCount    int32                  `protobuf:"varint,3,opt,name=totalCount,proto3" json:"totalCount,omitempty"`
+	Hits          []*HitEvent            `protobuf:"bytes,4,rep,name=hits,proto3" json:"hits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTaskHitsResponse) Reset() {
+	*x = GetTaskHitsResponse{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTaskHitsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTaskHitsResponse) ProtoMessage() {}
+
+func (x *GetTaskHitsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTaskHitsResponse.ProtoReflect.Descriptor instead.
+func (*GetTaskHitsResponse) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *GetTaskHitsResponse) GetUuid() string {
+	if x != nil {
+		return x.Uuid
+	}
+	return ""
+}
+
+func (x *GetTaskHitsResponse) GetTaskID() string {
+	if x != nil {
+		return x.TaskID
+	}
+	return ""
+}
+
+func (x *GetTaskHitsResponse) GetTotalCount() int32 {
+	if x != nil {
+		return x.TotalCount
+	}
+	return 0
+}
+
+func (x *GetTaskHitsResponse) GetHits() []*HitEvent {
+	if x != nil {
+		return x.Hits
+	}
+	return nil
+}
+
 var File_api_pb_zeek_runner_proto protoreflect.FileDescriptor
 
 const file_api_pb_zeek_runner_proto_rawDesc = "" +
@@ -2499,7 +2842,48 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x12\x14\n" +
 	"\x05valid\x18\x02 \x01(\x05R\x05valid\x12\x18\n" +
 	"\ainvalid\x18\x03 \x01(\x05R\ainvalid\x121\n" +
-	"\ascripts\x18\x04 \x03(\v2\x17.zeek_runner.ScriptInfoR\ascripts2\xf3\b\n" +
+	"\ascripts\x18\x04 \x03(\v2\x17.zeek_runner.ScriptInfoR\ascripts\"v\n" +
+	"\x12GetTaskHitsRequest\x12\x12\n" +
+	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\x16\n" +
+	"\x06taskID\x18\x02 \x01(\tR\x06taskID\x12\x1e\n" +
+	"\n" +
+	"sourceType\x18\x03 \x01(\tR\n" +
+	"sourceType\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xae\x04\n" +
+	"\bHitEvent\x12\x18\n" +
+	"\aeventID\x18\x01 \x01(\tR\aeventID\x12\x1c\n" +
+	"\teventType\x18\x02 \x01(\tR\teventType\x12\x1c\n" +
+	"\teventTime\x18\x03 \x01(\tR\teventTime\x12\x16\n" +
+	"\x06taskID\x18\x04 \x01(\tR\x06taskID\x12\x12\n" +
+	"\x04uuid\x18\x05 \x01(\tR\x04uuid\x12\x16\n" +
+	"\x06pcapID\x18\x06 \x01(\tR\x06pcapID\x12\x1a\n" +
+	"\bpcapPath\x18\a \x01(\tR\bpcapPath\x12\x1a\n" +
+	"\bscriptID\x18\b \x01(\tR\bscriptID\x12\x1e\n" +
+	"\n" +
+	"scriptPath\x18\t \x01(\tR\n" +
+	"scriptPath\x12\x18\n" +
+	"\averdict\x18\n" +
+	" \x01(\tR\averdict\x12\x1e\n" +
+	"\n" +
+	"sourceType\x18\v \x01(\tR\n" +
+	"sourceType\x12\x1a\n" +
+	"\bruleType\x18\f \x01(\tR\bruleType\x12\x1a\n" +
+	"\bruleName\x18\r \x01(\tR\bruleName\x12\x18\n" +
+	"\amessage\x18\x0e \x01(\tR\amessage\x12\x1c\n" +
+	"\tindicator\x18\x0f \x01(\tR\tindicator\x12\x14\n" +
+	"\x05srcIp\x18\x10 \x01(\tR\x05srcIp\x12\x18\n" +
+	"\asrcPort\x18\x11 \x01(\x05R\asrcPort\x12\x14\n" +
+	"\x05dstIp\x18\x12 \x01(\tR\x05dstIp\x12\x18\n" +
+	"\adstPort\x18\x13 \x01(\x05R\adstPort\x12\x14\n" +
+	"\x05proto\x18\x14 \x01(\tR\x05proto\x12\x10\n" +
+	"\x03uid\x18\x15 \x01(\tR\x03uid\"\x8c\x01\n" +
+	"\x13GetTaskHitsResponse\x12\x12\n" +
+	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\x16\n" +
+	"\x06taskID\x18\x02 \x01(\tR\x06taskID\x12\x1e\n" +
+	"\n" +
+	"totalCount\x18\x03 \x01(\x05R\n" +
+	"totalCount\x12)\n" +
+	"\x04hits\x18\x04 \x03(\v2\x15.zeek_runner.HitEventR\x04hits2\xc7\t\n" +
 	"\x13ZeekAnalysisService\x12F\n" +
 	"\aAnalyze\x12\x1b.zeek_runner.AnalyzeRequest\x1a\x1c.zeek_runner.AnalyzeResponse\"\x00\x12U\n" +
 	"\fAsyncAnalyze\x12 .zeek_runner.AsyncAnalyzeRequest\x1a!.zeek_runner.AsyncAnalyzeResponse\"\x00\x12d\n" +
@@ -2513,7 +2897,8 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\x0fZeekSyntaxCheck\x12#.zeek_runner.ZeekSyntaxCheckRequest\x1a$.zeek_runner.ZeekSyntaxCheckResponse\"\x00\x12R\n" +
 	"\vListScripts\x12\x1f.zeek_runner.ListScriptsRequest\x1a .zeek_runner.ListScriptsResponse\"\x00\x12E\n" +
 	"\tGetScript\x12\x1d.zeek_runner.GetScriptRequest\x1a\x17.zeek_runner.ScriptInfo\"\x00\x12X\n" +
-	"\rReloadScripts\x12!.zeek_runner.ReloadScriptsRequest\x1a\".zeek_runner.ReloadScriptsResponse\"\x00B\x14Z\x12zeek_runner/api/pbb\x06proto3"
+	"\rReloadScripts\x12!.zeek_runner.ReloadScriptsRequest\x1a\".zeek_runner.ReloadScriptsResponse\"\x00\x12R\n" +
+	"\vGetTaskHits\x12\x1f.zeek_runner.GetTaskHitsRequest\x1a .zeek_runner.GetTaskHitsResponse\"\x00B\x14Z\x12zeek_runner/api/pbb\x06proto3"
 
 var (
 	file_api_pb_zeek_runner_proto_rawDescOnce sync.Once
@@ -2527,7 +2912,7 @@ func file_api_pb_zeek_runner_proto_rawDescGZIP() []byte {
 	return file_api_pb_zeek_runner_proto_rawDescData
 }
 
-var file_api_pb_zeek_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_api_pb_zeek_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_api_pb_zeek_runner_proto_goTypes = []any{
 	(*AnalyzeRequest)(nil),            // 0: zeek_runner.AnalyzeRequest
 	(*AnalyzeResponse)(nil),           // 1: zeek_runner.AnalyzeResponse
@@ -2557,43 +2942,49 @@ var file_api_pb_zeek_runner_proto_goTypes = []any{
 	(*GetScriptRequest)(nil),          // 25: zeek_runner.GetScriptRequest
 	(*ReloadScriptsRequest)(nil),      // 26: zeek_runner.ReloadScriptsRequest
 	(*ReloadScriptsResponse)(nil),     // 27: zeek_runner.ReloadScriptsResponse
+	(*GetTaskHitsRequest)(nil),        // 28: zeek_runner.GetTaskHitsRequest
+	(*HitEvent)(nil),                  // 29: zeek_runner.HitEvent
+	(*GetTaskHitsResponse)(nil),       // 30: zeek_runner.GetTaskHitsResponse
 }
 var file_api_pb_zeek_runner_proto_depIdxs = []int32{
 	12, // 0: zeek_runner.AsyncAnalyzeBatchRequest.scripts:type_name -> zeek_runner.ScriptTask
 	20, // 1: zeek_runner.ParentTaskStatusResponse.subTasks:type_name -> zeek_runner.SubTaskSummary
 	23, // 2: zeek_runner.ListScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
 	23, // 3: zeek_runner.ReloadScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
-	0,  // 4: zeek_runner.ZeekAnalysisService.Analyze:input_type -> zeek_runner.AnalyzeRequest
-	10, // 5: zeek_runner.ZeekAnalysisService.AsyncAnalyze:input_type -> zeek_runner.AsyncAnalyzeRequest
-	13, // 6: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:input_type -> zeek_runner.AsyncAnalyzeBatchRequest
-	2,  // 7: zeek_runner.ZeekAnalysisService.Extract:input_type -> zeek_runner.ExtractRequest
-	15, // 8: zeek_runner.ZeekAnalysisService.ExtractAsync:input_type -> zeek_runner.ExtractAsyncRequest
-	17, // 9: zeek_runner.ZeekAnalysisService.GetTaskStatus:input_type -> zeek_runner.TaskStatusRequest
-	19, // 10: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:input_type -> zeek_runner.ParentTaskStatusRequest
-	4,  // 11: zeek_runner.ZeekAnalysisService.HealthCheck:input_type -> zeek_runner.HealthCheckRequest
-	6,  // 12: zeek_runner.ZeekAnalysisService.VersionCheck:input_type -> zeek_runner.VersionCheckRequest
-	8,  // 13: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:input_type -> zeek_runner.ZeekSyntaxCheckRequest
-	22, // 14: zeek_runner.ZeekAnalysisService.ListScripts:input_type -> zeek_runner.ListScriptsRequest
-	25, // 15: zeek_runner.ZeekAnalysisService.GetScript:input_type -> zeek_runner.GetScriptRequest
-	26, // 16: zeek_runner.ZeekAnalysisService.ReloadScripts:input_type -> zeek_runner.ReloadScriptsRequest
-	1,  // 17: zeek_runner.ZeekAnalysisService.Analyze:output_type -> zeek_runner.AnalyzeResponse
-	11, // 18: zeek_runner.ZeekAnalysisService.AsyncAnalyze:output_type -> zeek_runner.AsyncAnalyzeResponse
-	14, // 19: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:output_type -> zeek_runner.AsyncAnalyzeBatchResponse
-	3,  // 20: zeek_runner.ZeekAnalysisService.Extract:output_type -> zeek_runner.ExtractResponse
-	16, // 21: zeek_runner.ZeekAnalysisService.ExtractAsync:output_type -> zeek_runner.ExtractAsyncResponse
-	18, // 22: zeek_runner.ZeekAnalysisService.GetTaskStatus:output_type -> zeek_runner.TaskStatusResponse
-	21, // 23: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:output_type -> zeek_runner.ParentTaskStatusResponse
-	5,  // 24: zeek_runner.ZeekAnalysisService.HealthCheck:output_type -> zeek_runner.HealthCheckResponse
-	7,  // 25: zeek_runner.ZeekAnalysisService.VersionCheck:output_type -> zeek_runner.VersionCheckResponse
-	9,  // 26: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:output_type -> zeek_runner.ZeekSyntaxCheckResponse
-	24, // 27: zeek_runner.ZeekAnalysisService.ListScripts:output_type -> zeek_runner.ListScriptsResponse
-	23, // 28: zeek_runner.ZeekAnalysisService.GetScript:output_type -> zeek_runner.ScriptInfo
-	27, // 29: zeek_runner.ZeekAnalysisService.ReloadScripts:output_type -> zeek_runner.ReloadScriptsResponse
-	17, // [17:30] is the sub-list for method output_type
-	4,  // [4:17] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	29, // 4: zeek_runner.GetTaskHitsResponse.hits:type_name -> zeek_runner.HitEvent
+	0,  // 5: zeek_runner.ZeekAnalysisService.Analyze:input_type -> zeek_runner.AnalyzeRequest
+	10, // 6: zeek_runner.ZeekAnalysisService.AsyncAnalyze:input_type -> zeek_runner.AsyncAnalyzeRequest
+	13, // 7: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:input_type -> zeek_runner.AsyncAnalyzeBatchRequest
+	2,  // 8: zeek_runner.ZeekAnalysisService.Extract:input_type -> zeek_runner.ExtractRequest
+	15, // 9: zeek_runner.ZeekAnalysisService.ExtractAsync:input_type -> zeek_runner.ExtractAsyncRequest
+	17, // 10: zeek_runner.ZeekAnalysisService.GetTaskStatus:input_type -> zeek_runner.TaskStatusRequest
+	19, // 11: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:input_type -> zeek_runner.ParentTaskStatusRequest
+	4,  // 12: zeek_runner.ZeekAnalysisService.HealthCheck:input_type -> zeek_runner.HealthCheckRequest
+	6,  // 13: zeek_runner.ZeekAnalysisService.VersionCheck:input_type -> zeek_runner.VersionCheckRequest
+	8,  // 14: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:input_type -> zeek_runner.ZeekSyntaxCheckRequest
+	22, // 15: zeek_runner.ZeekAnalysisService.ListScripts:input_type -> zeek_runner.ListScriptsRequest
+	25, // 16: zeek_runner.ZeekAnalysisService.GetScript:input_type -> zeek_runner.GetScriptRequest
+	26, // 17: zeek_runner.ZeekAnalysisService.ReloadScripts:input_type -> zeek_runner.ReloadScriptsRequest
+	28, // 18: zeek_runner.ZeekAnalysisService.GetTaskHits:input_type -> zeek_runner.GetTaskHitsRequest
+	1,  // 19: zeek_runner.ZeekAnalysisService.Analyze:output_type -> zeek_runner.AnalyzeResponse
+	11, // 20: zeek_runner.ZeekAnalysisService.AsyncAnalyze:output_type -> zeek_runner.AsyncAnalyzeResponse
+	14, // 21: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:output_type -> zeek_runner.AsyncAnalyzeBatchResponse
+	3,  // 22: zeek_runner.ZeekAnalysisService.Extract:output_type -> zeek_runner.ExtractResponse
+	16, // 23: zeek_runner.ZeekAnalysisService.ExtractAsync:output_type -> zeek_runner.ExtractAsyncResponse
+	18, // 24: zeek_runner.ZeekAnalysisService.GetTaskStatus:output_type -> zeek_runner.TaskStatusResponse
+	21, // 25: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:output_type -> zeek_runner.ParentTaskStatusResponse
+	5,  // 26: zeek_runner.ZeekAnalysisService.HealthCheck:output_type -> zeek_runner.HealthCheckResponse
+	7,  // 27: zeek_runner.ZeekAnalysisService.VersionCheck:output_type -> zeek_runner.VersionCheckResponse
+	9,  // 28: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:output_type -> zeek_runner.ZeekSyntaxCheckResponse
+	24, // 29: zeek_runner.ZeekAnalysisService.ListScripts:output_type -> zeek_runner.ListScriptsResponse
+	23, // 30: zeek_runner.ZeekAnalysisService.GetScript:output_type -> zeek_runner.ScriptInfo
+	27, // 31: zeek_runner.ZeekAnalysisService.ReloadScripts:output_type -> zeek_runner.ReloadScriptsResponse
+	30, // 32: zeek_runner.ZeekAnalysisService.GetTaskHits:output_type -> zeek_runner.GetTaskHitsResponse
+	19, // [19:33] is the sub-list for method output_type
+	5,  // [5:19] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_api_pb_zeek_runner_proto_init() }
@@ -2607,7 +2998,7 @@ func file_api_pb_zeek_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_pb_zeek_runner_proto_rawDesc), len(file_api_pb_zeek_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

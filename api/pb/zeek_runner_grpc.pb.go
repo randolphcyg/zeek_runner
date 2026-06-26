@@ -32,6 +32,7 @@ const (
 	ZeekAnalysisService_ListScripts_FullMethodName         = "/zeek_runner.ZeekAnalysisService/ListScripts"
 	ZeekAnalysisService_GetScript_FullMethodName           = "/zeek_runner.ZeekAnalysisService/GetScript"
 	ZeekAnalysisService_ReloadScripts_FullMethodName       = "/zeek_runner.ZeekAnalysisService/ReloadScripts"
+	ZeekAnalysisService_GetTaskHits_FullMethodName         = "/zeek_runner.ZeekAnalysisService/GetTaskHits"
 )
 
 // ZeekAnalysisServiceClient is the client API for ZeekAnalysisService service.
@@ -53,6 +54,7 @@ type ZeekAnalysisServiceClient interface {
 	ListScripts(ctx context.Context, in *ListScriptsRequest, opts ...grpc.CallOption) (*ListScriptsResponse, error)
 	GetScript(ctx context.Context, in *GetScriptRequest, opts ...grpc.CallOption) (*ScriptInfo, error)
 	ReloadScripts(ctx context.Context, in *ReloadScriptsRequest, opts ...grpc.CallOption) (*ReloadScriptsResponse, error)
+	GetTaskHits(ctx context.Context, in *GetTaskHitsRequest, opts ...grpc.CallOption) (*GetTaskHitsResponse, error)
 }
 
 type zeekAnalysisServiceClient struct {
@@ -193,6 +195,16 @@ func (c *zeekAnalysisServiceClient) ReloadScripts(ctx context.Context, in *Reloa
 	return out, nil
 }
 
+func (c *zeekAnalysisServiceClient) GetTaskHits(ctx context.Context, in *GetTaskHitsRequest, opts ...grpc.CallOption) (*GetTaskHitsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTaskHitsResponse)
+	err := c.cc.Invoke(ctx, ZeekAnalysisService_GetTaskHits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ZeekAnalysisServiceServer is the server API for ZeekAnalysisService service.
 // All implementations must embed UnimplementedZeekAnalysisServiceServer
 // for forward compatibility.
@@ -212,6 +224,7 @@ type ZeekAnalysisServiceServer interface {
 	ListScripts(context.Context, *ListScriptsRequest) (*ListScriptsResponse, error)
 	GetScript(context.Context, *GetScriptRequest) (*ScriptInfo, error)
 	ReloadScripts(context.Context, *ReloadScriptsRequest) (*ReloadScriptsResponse, error)
+	GetTaskHits(context.Context, *GetTaskHitsRequest) (*GetTaskHitsResponse, error)
 	mustEmbedUnimplementedZeekAnalysisServiceServer()
 }
 
@@ -260,6 +273,9 @@ func (UnimplementedZeekAnalysisServiceServer) GetScript(context.Context, *GetScr
 }
 func (UnimplementedZeekAnalysisServiceServer) ReloadScripts(context.Context, *ReloadScriptsRequest) (*ReloadScriptsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReloadScripts not implemented")
+}
+func (UnimplementedZeekAnalysisServiceServer) GetTaskHits(context.Context, *GetTaskHitsRequest) (*GetTaskHitsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTaskHits not implemented")
 }
 func (UnimplementedZeekAnalysisServiceServer) mustEmbedUnimplementedZeekAnalysisServiceServer() {}
 func (UnimplementedZeekAnalysisServiceServer) testEmbeddedByValue()                             {}
@@ -516,6 +532,24 @@ func _ZeekAnalysisService_ReloadScripts_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZeekAnalysisService_GetTaskHits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTaskHitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZeekAnalysisServiceServer).GetTaskHits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZeekAnalysisService_GetTaskHits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZeekAnalysisServiceServer).GetTaskHits(ctx, req.(*GetTaskHitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ZeekAnalysisService_ServiceDesc is the grpc.ServiceDesc for ZeekAnalysisService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -574,6 +608,10 @@ var ZeekAnalysisService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReloadScripts",
 			Handler:    _ZeekAnalysisService_ReloadScripts_Handler,
+		},
+		{
+			MethodName: "GetTaskHits",
+			Handler:    _ZeekAnalysisService_GetTaskHits_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

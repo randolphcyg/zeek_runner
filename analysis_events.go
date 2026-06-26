@@ -107,11 +107,12 @@ type analysisEventPublisher struct {
 	writer    *kafka.Writer
 	brokers   string
 	topic     string
+	dialer    *kafka.Dialer
 	publishFn func(context.Context, string, string, any) error
 }
 
-func newAnalysisEventPublisher(brokers string) *analysisEventPublisher {
-	writer := newKafkaJSONWriter(brokers, analysisEventsTopic)
+func newAnalysisEventPublisher(brokers string, dialer *kafka.Dialer) *analysisEventPublisher {
+	writer := newKafkaJSONWriter(brokers, analysisEventsTopic, dialer)
 	if writer == nil {
 		return nil
 	}
@@ -120,6 +121,7 @@ func newAnalysisEventPublisher(brokers string) *analysisEventPublisher {
 		writer:  writer,
 		brokers: brokers,
 		topic:   analysisEventsTopic,
+		dialer:  dialer,
 	}
 }
 
@@ -155,7 +157,7 @@ func (p *analysisEventPublisher) Publish(ctx context.Context, key string, eventT
 			{Key: "analysisMode", Value: []byte("offline")},
 			{Key: "producer", Value: []byte(producerName)},
 		},
-	})
+	}, p.dialer)
 }
 
 func stableEventID(parts ...string) string {
@@ -334,6 +336,9 @@ func (s *Service) publishSubtaskHitEvents(ctx context.Context, opts zeekRunOptio
 		return err
 	}
 
+	// Collect all hits for Redis storage
+	var redisHits []TaskHitEvent
+
 	publish := func(hit analysisSubtaskHitEvent) error {
 		hit.EventID = stableEventID(
 			"subtask_hit",
@@ -362,6 +367,32 @@ func (s *Service) publishSubtaskHitEvents(ctx context.Context, opts zeekRunOptio
 		hit.ScriptID = opts.scriptID
 		hit.ScriptPath = opts.scriptPath
 		hit.Verdict = "malicious"
+
+		// Collect for Redis storage
+		redisHits = append(redisHits, TaskHitEvent{
+			EventID:    hit.EventID,
+			EventType:  hit.EventType,
+			EventTime:  hit.EventTime,
+			TaskID:     hit.TaskID,
+			UUID:       hit.UUID,
+			PcapID:     hit.PcapID,
+			PcapPath:   hit.PcapPath,
+			ScriptID:   hit.ScriptID,
+			ScriptPath: hit.ScriptPath,
+			Verdict:    hit.Verdict,
+			SourceType: hit.SourceType,
+			RuleType:   hit.RuleType,
+			RuleName:   hit.RuleName,
+			Message:    hit.Message,
+			Indicator:  hit.Indicator,
+			SrcIp:      hit.SrcIp,
+			SrcPort:    hit.SrcPort,
+			DstIp:      hit.DstIp,
+			DstPort:    hit.DstPort,
+			Proto:      hit.Proto,
+			UID:        hit.UID,
+		})
+
 		return s.publishAnalysisEvent(ctx, opts.taskID, "subtask_hit", hit)
 	}
 
@@ -373,6 +404,13 @@ func (s *Service) publishSubtaskHitEvents(ctx context.Context, opts zeekRunOptio
 	for _, hit := range intelHits {
 		if err := publish(hit); err != nil {
 			return err
+		}
+	}
+
+	// Store hits in Redis for later querying via MCP
+	if s.taskManager != nil && len(redisHits) > 0 {
+		if err := s.taskManager.SaveTaskHits(ctx, opts.uuid, opts.taskID, redisHits); err != nil {
+			slog.Warn("failed to save task hits to Redis", "uuid", opts.uuid, "err", err)
 		}
 	}
 
