@@ -110,16 +110,11 @@ func (s *GRPCServer) VersionCheck(ctx context.Context, req *pb.VersionCheckReque
 	component := req.GetComponent()
 	LogServiceEvent("version_check", "component", component)
 
-	if component != "zeek" && component != "zeek-kafka" {
-		return nil, status.Error(codes.InvalidArgument, "component must be 'zeek' or 'zeek-kafka'")
+	if component != "zeek" {
+		return nil, status.Error(codes.InvalidArgument, "component must be 'zeek'")
 	}
 
-	var cmd *exec.Cmd
-	if component == "zeek" {
-		cmd = exec.Command("zeek", "--version")
-	} else {
-		cmd = exec.Command("zeek", "-N", "Seiso::Kafka")
-	}
+	cmd := exec.Command("zeek", "--version")
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {

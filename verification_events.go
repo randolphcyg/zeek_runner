@@ -135,7 +135,7 @@ func (s *Service) publishVerificationLogEvents(ctx context.Context, opts zeekRun
 				Content:      record,
 			}
 
-			if err := s.verificationPublisher.Publish(ctx, opts.uuid, "verification_log", event); err != nil {
+			if err := s.publishVerificationEvent(ctx, opts.uuid, "verification_log", event); err != nil {
 				return err
 			}
 		}

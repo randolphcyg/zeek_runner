@@ -64,7 +64,7 @@ func newKafkaJSONWriter(brokers string, topic string, dialer *kafka.Dialer) *kaf
 		Addr:         kafka.TCP(parts...),
 		Topic:        topic,
 		Balancer:     &kafka.Hash{},
-		RequiredAcks: kafka.RequireOne,
+		RequiredAcks: kafka.RequireAll,
 		BatchTimeout: 10 * time.Millisecond,
 		Transport:    &kafka.Transport{SASL: dialer.SASLMechanism},
 	}
@@ -185,14 +185,21 @@ func (k *KafkaChecker) Start(ctx context.Context, onStatusChange func(bool)) {
 	check := func() {
 		dialCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
-		conn, err := k.dialer.DialContext(dialCtx, "tcp", k.brokers)
-		if err != nil {
-			onStatusChange(false)
-			slog.Warn("Kafka unreachable", "err", err)
-		} else {
+
+		var lastErr error
+		for _, broker := range splitKafkaBrokers(k.brokers) {
+			conn, err := k.dialer.DialContext(dialCtx, "tcp", broker)
+			if err != nil {
+				lastErr = err
+				continue
+			}
 			conn.Close()
 			onStatusChange(true)
+			return
 		}
+
+		onStatusChange(false)
+		slog.Warn("Kafka unreachable", "err", lastErr)
 	}
 
 	check()

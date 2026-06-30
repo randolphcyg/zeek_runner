@@ -4,13 +4,13 @@ redef enum Notice::Type += {
 
 hook Notice::policy(n: Notice::Info)
     {
-    ensure_notice_kafka_stream();
+    ensure_notice_log_stream();
     add n$actions[Notice::ACTION_LOG];
     }
 
 event Intel::match(s: Intel::Seen, items: set[Intel::Item]) &priority=10
     {
-    ensure_intel_kafka_stream();
+    ensure_intel_log_stream();
 
     local handled_by_do_notice = F;
 

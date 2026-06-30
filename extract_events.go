@@ -24,26 +24,26 @@ type extractTaskSummary struct {
 }
 
 type extractFileEvent struct {
-	EventType    string `json:"eventType"`
-	EventVersion string `json:"eventVersion"`
-	EventTime    string `json:"eventTime"`
-	Producer     string `json:"producer"`
-	AnalysisMode string `json:"analysisMode"`
-	TaskID       string `json:"taskID"`
-	UUID         string `json:"uuid"`
-	PcapID       string `json:"pcapID"`
-	PcapPath     string `json:"pcapPath"`
-	ScriptID     string `json:"scriptID"`
-	ScriptPath   string `json:"scriptPath"`
-	OutputDir    string `json:"outputDir"`
-	FUID         string `json:"fuid"`
-	FileName     string `json:"fileName"`
+	EventType        string `json:"eventType"`
+	EventVersion     string `json:"eventVersion"`
+	EventTime        string `json:"eventTime"`
+	Producer         string `json:"producer"`
+	AnalysisMode     string `json:"analysisMode"`
+	TaskID           string `json:"taskID"`
+	UUID             string `json:"uuid"`
+	PcapID           string `json:"pcapID"`
+	PcapPath         string `json:"pcapPath"`
+	ScriptID         string `json:"scriptID"`
+	ScriptPath       string `json:"scriptPath"`
+	OutputDir        string `json:"outputDir"`
+	FUID             string `json:"fuid"`
+	FileName         string `json:"fileName"`
 	OriginalFileName string `json:"originalFileName"`
-	FilePath     string `json:"filePath"`
-	FileSize     int64  `json:"fileSize"`
-	SHA256       string `json:"sha256"`
-	MimeType     string `json:"mimeType"`
-	RefCount     int    `json:"refCount"`
+	FilePath         string `json:"filePath"`
+	FileSize         int64  `json:"fileSize"`
+	SHA256           string `json:"sha256"`
+	MimeType         string `json:"mimeType"`
+	RefCount         int    `json:"refCount"`
 }
 
 type extractTaskEvent struct {
@@ -181,40 +181,40 @@ func newFallbackFileRecord(filePath string, pcapPath string, taskID string) (*Fi
 }
 
 func (s *Service) publishExtractFileEvent(ctx context.Context, opts zeekRunOptions, record *FileRecord) error {
-	if s == nil || s.extractPublisher == nil || record == nil {
+	if s == nil || record == nil {
 		return nil
 	}
 
 	eventType := "file_extracted"
 
 	payload := extractFileEvent{
-		EventType:    eventType,
-		EventVersion: eventVersion,
-		EventTime:    time.Now().Format(time.RFC3339),
-		Producer:     producerName,
-		AnalysisMode: "offline",
-		TaskID:       opts.taskID,
-		UUID:         opts.uuid,
-		PcapID:       opts.pcapID,
-		PcapPath:     opts.pcapPath,
-		ScriptID:     opts.scriptID,
-		ScriptPath:   opts.scriptPath,
-		OutputDir:    opts.outputDir,
-		FUID:         record.FUID,
-		FileName:     record.FileName,
+		EventType:        eventType,
+		EventVersion:     eventVersion,
+		EventTime:        time.Now().Format(time.RFC3339),
+		Producer:         producerName,
+		AnalysisMode:     "offline",
+		TaskID:           opts.taskID,
+		UUID:             opts.uuid,
+		PcapID:           opts.pcapID,
+		PcapPath:         opts.pcapPath,
+		ScriptID:         opts.scriptID,
+		ScriptPath:       opts.scriptPath,
+		OutputDir:        opts.outputDir,
+		FUID:             record.FUID,
+		FileName:         record.FileName,
 		OriginalFileName: record.OriginalFileName,
-		FilePath:     record.FilePath,
-		FileSize:     record.FileSize,
-		SHA256:       record.Hash,
-		MimeType:     record.MimeType,
-		RefCount:     record.RefCount,
+		FilePath:         record.FilePath,
+		FileSize:         record.FileSize,
+		SHA256:           record.Hash,
+		MimeType:         record.MimeType,
+		RefCount:         record.RefCount,
 	}
 
-	return s.extractPublisher.Publish(ctx, opts.taskID, eventType, payload)
+	return s.publishExtractEvent(ctx, opts.taskID, eventType, payload)
 }
 
 func (s *Service) publishExtractTaskEvent(ctx context.Context, opts zeekRunOptions, eventType string, status string, summary extractTaskSummary, eventErr error) error {
-	if s == nil || s.extractPublisher == nil {
+	if s == nil {
 		return nil
 	}
 
@@ -241,7 +241,7 @@ func (s *Service) publishExtractTaskEvent(ctx context.Context, opts zeekRunOptio
 		payload.Error = eventErr.Error()
 	}
 
-	return s.extractPublisher.Publish(ctx, opts.taskID, eventType, payload)
+	return s.publishExtractEvent(ctx, opts.taskID, eventType, payload)
 }
 
 func (s *Service) processExtractedFiles(ctx context.Context, opts zeekRunOptions) (extractTaskSummary, error) {

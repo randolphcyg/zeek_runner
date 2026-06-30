@@ -71,7 +71,7 @@ message HealthCheckResponse {
 
 // 版本检查请求
 message VersionCheckRequest {
-  string component = 1;        // 组件名称 (zeek 或 zeek-kafka)
+  string component = 1;        // 组件名称，目前支持 zeek
 }
 
 // 版本检查响应

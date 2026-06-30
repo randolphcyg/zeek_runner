@@ -598,7 +598,7 @@ func (x *HealthCheckResponse) GetAcceptingJobs() bool {
 // 版本检查请求
 type VersionCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Component     string                 `protobuf:"bytes,1,opt,name=component,proto3" json:"component,omitempty"` // 组件名称 (zeek 或 zeek-kafka)
+	Component     string                 `protobuf:"bytes,1,opt,name=component,proto3" json:"component,omitempty"` // 组件名称，目前支持 zeek
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

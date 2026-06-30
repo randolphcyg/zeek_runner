@@ -1,12 +1,12 @@
 # Zeek 日志流管理。
-# 原始日志不再通过 Kafka 插件写入旧 Topic（zeek_raw_notice / zeek_logs 等）。
+# Zeek 仅写入本地 .log 文件，不直接写 Kafka。
 # 所有结构化事件由 zeek_runner Go 代码读取 .log 文件后发布到新 Topic：
 #   - zeek_detection_events  (subtask_hit, subtask_completed, parent_completed 等)
 #   - zeek_verification_logs (验证模式全量日志)
 #   - zeek_extract_events    (文件提取事件)
-# 此文件仅保留日志流管理逻辑（按模式禁用不需要的日志流）和兼容函数签名。
+# 此文件仅保留日志流管理逻辑（按模式禁用不需要的日志流）。
 
-function configure_kafka_stream(id: Log::ID)
+function configure_log_stream(id: Log::ID)
     {
     local is_extract_mode = (getenv("EXTRACTED_FILE_PATH") != "");
     local is_detect_mode = (onlyNotice == "true");
@@ -29,17 +29,17 @@ function configure_kafka_stream(id: Log::ID)
         }
     }
 
-# 兼容旧脚本调用，不再添加 Kafka filter
-function ensure_intel_kafka_stream()
+function ensure_intel_log_stream()
     {
-    intel_kafka_filter_added = T;
+    intel_log_stream_configured = T;
     }
 
-function ensure_notice_kafka_stream()
+function ensure_notice_log_stream()
     {
+    notice_log_stream_configured = T;
     }
 
-function ensure_files_kafka_stream()
+function ensure_files_log_stream()
     {
     }
 
@@ -52,7 +52,7 @@ event zeek_init() &priority=10
         add active_stream_ids[id];
 
     for ( id in active_stream_ids )
-        configure_kafka_stream(id);
+        configure_log_stream(id);
     }
 
 event zeek_done()

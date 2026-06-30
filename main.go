@@ -80,7 +80,6 @@ func main() {
 		auth.POST("/extract/async", httpHandler.HandleExtractAsync)
 		auth.GET("/task/:taskID", httpHandler.HandleTaskStatus)
 		auth.GET("/version/zeek", httpHandler.CmdHandler("zeek", "--version"))
-		auth.GET("/version/zeek-kafka", httpHandler.CmdHandler("zeek", "-N", "Seiso::Kafka"))
 		auth.POST("/syntax-check", httpHandler.HandleSyntaxCheck)
 		auth.GET("/scripts", httpHandler.HandleListScripts)
 		auth.GET("/scripts/:scriptID", httpHandler.HandleGetScript)

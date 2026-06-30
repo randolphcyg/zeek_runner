@@ -13,17 +13,34 @@ const kafkaOutboxKey = "zeek:kafka_outbox"
 
 type kafkaOutboxEvent struct {
 	ID        string          `json:"id"`
+	Publisher string          `json:"publisher"`
 	Key       string          `json:"key"`
 	EventType string          `json:"eventType"`
 	Payload   json.RawMessage `json:"payload"`
 	CreatedAt time.Time       `json:"createdAt"`
 }
 
+type kafkaEventPublisher interface {
+	Publish(ctx context.Context, key string, eventType string, payload any) error
+}
+
 func (s *Service) publishAnalysisEvent(ctx context.Context, key, eventType string, payload any) error {
-	if s == nil || s.analysisPublisher == nil {
+	return s.publishKafkaEvent(ctx, "analysis", s.analysisPublisher, key, eventType, payload)
+}
+
+func (s *Service) publishExtractEvent(ctx context.Context, key, eventType string, payload any) error {
+	return s.publishKafkaEvent(ctx, "extract", s.extractPublisher, key, eventType, payload)
+}
+
+func (s *Service) publishVerificationEvent(ctx context.Context, key, eventType string, payload any) error {
+	return s.publishKafkaEvent(ctx, "verification", s.verificationPublisher, key, eventType, payload)
+}
+
+func (s *Service) publishKafkaEvent(ctx context.Context, publisherName string, publisher kafkaEventPublisher, key, eventType string, payload any) error {
+	if s == nil || publisher == nil {
 		return nil
 	}
-	err := s.analysisPublisher.Publish(ctx, key, eventType, payload)
+	err := publisher.Publish(ctx, key, eventType, payload)
 	if err == nil {
 		return nil
 	}
@@ -35,7 +52,8 @@ func (s *Service) publishAnalysisEvent(ctx context.Context, key, eventType strin
 		return err
 	}
 	event := kafkaOutboxEvent{
-		ID:        stableEventID("outbox", key, eventType, string(raw)),
+		ID:        stableEventID("outbox", publisherName, key, eventType, string(raw)),
+		Publisher: publisherName,
 		Key:       key,
 		EventType: eventType,
 		Payload:   raw,
@@ -48,11 +66,11 @@ func (s *Service) publishAnalysisEvent(ctx context.Context, key, eventType strin
 	if pushErr := s.taskManager.redis.RPush(ctx, kafkaOutboxKey, data).Err(); pushErr != nil {
 		return err
 	}
-	return err
+	return nil
 }
 
 func (s *Service) StartKafkaOutboxFlusher(ctx context.Context) {
-	if s == nil || s.taskManager == nil || s.taskManager.redis == nil || s.analysisPublisher == nil {
+	if s == nil || s.taskManager == nil || s.taskManager.redis == nil {
 		return
 	}
 	go func() {
@@ -83,11 +101,30 @@ func (s *Service) flushKafkaOutbox(ctx context.Context, limit int) {
 		if err := json.Unmarshal(data, &event); err != nil {
 			continue
 		}
-		if err := s.analysisPublisher.Publish(ctx, event.Key, event.EventType, event.Payload); err != nil {
+		publisher := s.outboxPublisher(event.Publisher)
+		if publisher == nil {
+			slog.Warn("kafka outbox publisher unavailable", "event", event.ID, "publisher", event.Publisher)
+			_ = s.taskManager.redis.LPush(ctx, kafkaOutboxKey, data).Err()
+			return
+		}
+		if err := publisher.Publish(ctx, event.Key, event.EventType, event.Payload); err != nil {
 			_ = s.taskManager.redis.LPush(ctx, kafkaOutboxKey, data).Err()
 			slog.Warn("kafka outbox flush failed", "event", event.ID, "err", err)
 			return
 		}
+	}
+}
+
+func (s *Service) outboxPublisher(name string) kafkaEventPublisher {
+	switch name {
+	case "", "analysis":
+		return s.analysisPublisher
+	case "extract":
+		return s.extractPublisher
+	case "verification":
+		return s.verificationPublisher
+	default:
+		return nil
 	}
 }
 

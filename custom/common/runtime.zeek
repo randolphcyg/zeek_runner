@@ -11,8 +11,8 @@ global pcapPath = getenv("PCAP_PATH");
 global scriptID = getenv("SCRIPT_ID");
 global scriptPath = getenv("SCRIPT_PATH");
 global analysisMode = getenv("ANALYSIS_MODE");
-global notice_kafka_filter_added = F;
-global intel_kafka_filter_added = F;
+global notice_log_stream_configured = F;
+global intel_log_stream_configured = F;
 
 function current_analysis_mode(): string
     {

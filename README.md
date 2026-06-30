@@ -1,15 +1,4 @@
-# zeek + zeek-kafka + kafka = zeek_runner
-
-## 依赖说明
-```shell
-# 验证 zeek-kafka 插件安装
-RUN zeek -N Seiso::Kafka
-# Seiso::Kafka - Writes logs to Kafka (dynamic, version 0.3.0)
-# 显示0.3.0 是因为zeek-kafka库没有更改那个显示版本 实际上是新版本了
-
-# 基于Seiso/Kafka release 1.2.0 增加支持kafka key和header的写入 额外字段不用加在数据中
-https://github.com/randolphcyg/zeek-kafka/
-```
+# zeek_runner = zeek + kafka
 
 ## docker部署
 
@@ -700,9 +689,6 @@ curl http://localhost:18001/api/v1/healthz
 **完整测试命令**（单实例）：
 ```shell
 
-# 调用 /api/v1/version/zeek-kafka 接口
-curl -H "User-Agent: test" -H "Authorization: your-token" http://localhost:8000/api/v1/version/zeek-kafka
-
 # 测试检测恶意行为发送到kafka 仅notice日志
 curl -X POST \
   -H "Content-Type: application/json" \
@@ -1008,13 +994,13 @@ zeek_runner-zeek_runner-3: 7 个任务
 
 ### 直接使用本机zeek测试
 ```shell
-##### 测试 kafka 消息、环境变量取值、二次开发zeek-kafka组件功能是否生效
-# config.zeek是自定义配置的 包含对kafka配置和消息的设置;本地测试时可以不指定，指定了会将消息发送到kafka,本地不生成log文件
-# ONLY_NOTICE=true 环境变量设置为true只发送notice日志 为false发送所有日志(除notice)
-# go程序中 config.zeek 不需要上层调用者赋值; 只需要给定pcap文件路径 脚本路径 onlyNotice三个参数;
-ONLY_NOTICE=true SCRIPT_PATH=/xx/xx/scripts/detect_ssh_bruteforce.zeek \ 
+##### 本地测试：仅验证 Zeek 脚本能解析 pcap 并生成本地 .log 文件
+# Kafka 发送需要通过 Go 服务 API 触发，由 Go 读取 .log 后发布结构化事件
+# ONLY_NOTICE=true 只输出 notice/intel/task_status 日志；false 输出完整日志
+ONLY_NOTICE=true SCRIPT_PATH=/xx/xx/scripts/detect_ssh_bruteforce.zeek \
 PCAP_PATH=/xx/xx/pcaps/ssh_bruteforce_test.pcap \
-zeek -Cr ./pcaps/ssh_bruteforce_test.pcap ./config.zeek ./scripts/detect_ssh_bruteforce.zeek
+zeek -Cr ./pcaps/ssh_bruteforce_test.pcap \
+./scripts/detect_ssh_bruteforce.zeek ./custom/config.zeek
 
 ##### 仅本地测试
 
