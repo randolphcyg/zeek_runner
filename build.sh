@@ -85,9 +85,13 @@ echo "========================================"
 echo ""
 echo "Building Docker image..."
 DOCKER_BUILD_CMD="docker build"
+IMAGE_NAME="zeek_runner"
+IMAGE_TAGS=(-t "${IMAGE_NAME}:${VERSION}")
 
 if [ -n "$PLATFORM" ]; then
   DOCKER_BUILD_CMD="$DOCKER_BUILD_CMD --platform $PLATFORM"
+else
+  IMAGE_TAGS+=(-t "${IMAGE_NAME}:latest")
 fi
 
 APT_MIRROR_ARG=()
@@ -100,8 +104,7 @@ $DOCKER_BUILD_CMD \
   --build-arg BUILD_TIME="$BUILD_TIME" \
   --build-arg GIT_COMMIT="$GIT_COMMIT" \
   "${APT_MIRROR_ARG[@]}" \
-  -t "zeek_runner:${VERSION}${TAG_SUFFIX}" \
-  -t "zeek_runner:latest${TAG_SUFFIX}" \
+  "${IMAGE_TAGS[@]}" \
   -f Dockerfile \
   .
 
@@ -110,12 +113,14 @@ if [ "$SAVE_IMAGE" -eq 1 ]; then
   echo ""
   echo "Saving image to tarball..."
   TARBALL="zeek_runner-${VERSION}${TAG_SUFFIX}.tar.gz"
-  docker save "zeek_runner:latest${TAG_SUFFIX}" | gzip > "$TARBALL"
+  docker save "${IMAGE_NAME}:${VERSION}" | gzip > "$TARBALL"
 fi
 
 echo ""
 echo "========================================"
 echo "Build complete!"
+echo "Image tags:"
+echo "  ${IMAGE_NAME}:${VERSION}"
 if [ -n "$TARBALL" ]; then
   echo "Image file: $TARBALL"
   if [ -n "$PLATFORM" ]; then

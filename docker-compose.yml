@@ -11,7 +11,7 @@ x-logging-infra: &logging-infra
     max-file: "3"
 
 x-zeek-runner-common: &zeek-runner-common
-  image: zeek_runner:latest
+  image: zeek_runner:5.0
   restart: unless-stopped
   depends_on:
     redis:

@@ -14,6 +14,7 @@
 
 # 构建 Ubuntu 24.04 x86_64 (linux/amd64) 镜像
 ./build.sh --ubuntu
+# 默认版本为 5.0，导出的 tar 加载后镜像 tag 为 zeek_runner:5.0
 
 # 构建 Ubuntu 24.04 ARM64 (linux/arm64) 镜像
 ./build.sh --ubuntu-arm64
@@ -45,16 +46,16 @@ docker pull redis:8-alpine --platform linux/amd64
 docker pull nginx:1.28-alpine --platform linux/amd64
 docker pull jaegertracing/jaeger:2.17.0 --platform linux/amd64
 
-docker build -t zeek_runner:latest . --platform linux/amd64
+docker build -t zeek_runner:5.0 . --platform linux/amd64
 # 指定国内仓库
-docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:latest . --platform linux/amd64
+docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:5.0 . --platform linux/amd64
 # 容器导出
-docker save zeek_runner:latest  | gzip > zeek_runner.tar.gz
+docker save zeek_runner:5.0 | gzip > zeek_runner-5.0-amd64.tar.gz
 docker save redis:8-alpine | gzip > redis.tar.gz
 docker save nginx:1.28-alpine | gzip > nginx.tar.gz
 docker save jaegertracing/jaeger:2.17.0 | gzip > jaeger.tar.gz
 
-docker load -i zeek_runner.tar.gz
+docker load -i zeek_runner-5.0-amd64.tar.gz
 docker load -i redis.tar.gz
 docker load -i nginx.tar.gz
 docker load -i jaeger.tar.gz
@@ -71,13 +72,14 @@ chmod +x build.sh
 ./build.sh --ubuntu --version 5.0  # 指定版本号
 
 # 构建产物示例：
-# zeek_runner-5.0-amd64.tar.gz   # zeek_runner 镜像
+# zeek_runner-5.0-amd64.tar.gz   # 加载后镜像 tag 为 zeek_runner:5.0
 
 # 2. 传输到目标服务器
 scp zeek_runner-5.0-amd64.tar.gz user@server:/data/zeek_runner/
 
 # 3. 在目标服务器加载镜像
 docker load -i zeek_runner-5.0-amd64.tar.gz
+# 加载后使用 zeek_runner:5.0 启动，架构信息只保留在 tar 文件名中
 
 # 4. 编辑配置文件（设置 Redis 密码、Kafka 地址等）
 sudo vi /data/zeek_runner/config.yaml
@@ -110,7 +112,7 @@ docker run -d \
   --log-driver json-file \
   --log-opt max-size=100m \
   --log-opt max-file=3 \
-  zeek_runner:latest
+  zeek_runner:5.0
 
 # 使用环境变量启动（不推荐，建议使用配置文件）
 docker run -d \
@@ -123,7 +125,7 @@ docker run -d \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek:ro \
-  zeek_runner:latest
+  zeek_runner:5.0
 ```
 
 #### 日志配置
@@ -149,13 +151,13 @@ docker logs --since 2024-01-01T00:00:00 zeek_runner
 **日志格式示例**：
 ```json
 {
-  "time": "2024-01-01T12:00:00.000Z",
-  "level": "INFO",
-  "msg": "service_started",
-  "instance": "abc123-4567",
-  "event": "startup",
-  "http_addr": ":8000",
-  "grpc_addr": ":50051"
+   "time": "2024-01-01T12:00:00.000Z",
+   "level": "INFO",
+   "msg": "service_started",
+   "instance": "abc123-4567",
+   "event": "startup",
+   "http_addr": ":8000",
+   "grpc_addr": ":50051"
 }
 ```
 
@@ -247,45 +249,45 @@ docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 
 ```yaml
 redis:
-  addr: "redis:6380"
-  password: "your-secure-password"
-  db: 0
+   addr: "redis:6380"
+   password: "your-secure-password"
+   db: 0
 
 kafka:
-  brokers: "192.168.2.6:9092"
+   brokers: "192.168.2.6:9092"
 
 pool:
-  size: 16
-  maxBlocking: 10000
-  timeoutMinutes: 10
+   size: 16
+   maxBlocking: 10000
+   timeoutMinutes: 10
 
 rateLimit:
-  limit: 2000
-  window: 60
+   limit: 2000
+   window: 60
 
 http:
-  host: "0.0.0.0"
-  port: 8000
-  timeout: "60s"
-  authTokens:
-    - "token1-change-me"
-    - "token2-change-me"
+   host: "0.0.0.0"
+   port: 8000
+   timeout: "60s"
+   authTokens:
+      - "token1-change-me"
+      - "token2-change-me"
 
 grpc:
-  host: "0.0.0.0"
-  port: 50051
-  timeout: "300s"
-  maxRecvMsgSize: 16777216    # 16MB
-  maxSendMsgSize: 16777216    # 16MB
-  enableReflection: true      # 启用 gRPC 反射服务
-  enableHealthCheck: true     # 启用健康检查
-  authTokens:
-    - "token1-change-me"
-    - "token2-change-me"
+   host: "0.0.0.0"
+   port: 50051
+   timeout: "300s"
+   maxRecvMsgSize: 16777216    # 16MB
+   maxSendMsgSize: 16777216    # 16MB
+   enableReflection: true      # 启用 gRPC 反射服务
+   enableHealthCheck: true     # 启用健康检查
+   authTokens:
+      - "token1-change-me"
+      - "token2-change-me"
 
 file:
-  extractPath: "/data/zeek_runner/extracted"
-  minSizeKB: 20
+   extractPath: "/data/zeek_runner/extracted"
+   minSizeKB: 20
 ```
 
 #### 配置参数说明
@@ -341,7 +343,7 @@ docker run -d \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:latest
+  zeek_runner:5.0
 
 # 方式二：使用默认路径（自动检测）
 # 服务会按顺序检测以下路径：
@@ -357,7 +359,7 @@ docker run -d \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:latest
+  zeek_runner:5.0
 ```
 
 #### 配置优先级
@@ -389,8 +391,8 @@ docker run -d \
 
 ```yaml
 otel:
-  enabled: true
-  endpoint: "otel-collector:4317"  # 留空则输出到日志
+   enabled: true
+   endpoint: "otel-collector:4317"  # 留空则输出到日志
 ```
 
 #### 生产环境部署
@@ -400,22 +402,22 @@ otel:
 ```yaml
 # config.yaml
 otel:
-  enabled: true
-  endpoint: ""  # 留空，输出到日志
+   enabled: true
+   endpoint: ""  # 留空，输出到日志
 ```
 
 日志输出示例：
 ```json
 {
-  "Name": "zeek_execution",
-  "SpanContext": {
-    "TraceID": "4bf92f3577b34da6a3ce929d0e0e4736",
-    "SpanID": "00f067aa0ba902b7"
-  },
-  "Attributes": [
-    {"Key": "task_id", "Value": {"Type": "STRING", "Value": "task-123"}}
-  ],
-  "Status": {"Code": "Error", "Description": "timeout"}
+   "Name": "zeek_execution",
+   "SpanContext": {
+      "TraceID": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "SpanID": "00f067aa0ba902b7"
+   },
+   "Attributes": [
+      {"Key": "task_id", "Value": {"Type": "STRING", "Value": "task-123"}}
+   ],
+   "Status": {"Code": "Error", "Description": "timeout"}
 }
 ```
 
@@ -456,8 +458,8 @@ open http://localhost:16686
 
 ```yaml
 otel:
-  enabled: true
-  endpoint: "your-otel-collector:4317"
+   enabled: true
+   endpoint: "your-otel-collector:4317"
 ```
 
 ### 异步任务模式
@@ -485,7 +487,7 @@ docker run -d \
   -v /data/zeek_runner/file_extract_script:/data/zeek_runner/file_extract_script:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:latest
+  zeek_runner:5.0
 ```
 
 ### 分布式部署
@@ -620,17 +622,17 @@ zeek:file:path:{filePath} → hash
 
 ```json
 {
-  "ts": 1712138400.0,
-  "id": {
-    "orig_h": "192.168.1.100",
-    "resp_h": "10.0.0.1"
-  },
-  "fuid": "Fabc123",
-  "file": {
-    "extracted": "/path/to/file.exe",
-    "sha256": "abc123def456...",
-    "mime_type": "application/x-dosexec"
-  }
+   "ts": 1712138400.0,
+   "id": {
+      "orig_h": "192.168.1.100",
+      "resp_h": "10.0.0.1"
+   },
+   "fuid": "Fabc123",
+   "file": {
+      "extracted": "/path/to/file.exe",
+      "sha256": "abc123def456...",
+      "mime_type": "application/x-dosexec"
+   }
 }
 ```
 
