@@ -2,7 +2,7 @@
 # Global Arguments
 # ===========================
 ARG ZEEK_VER=8.0.8
-ARG GO_VER=1.26.4-alpine
+ARG GO_VER=1.26.5-alpine
 ARG APT_MIRROR
 
 ARG VERSION=dev
@@ -22,9 +22,7 @@ WORKDIR /app
 ENV GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
 ENV GOSUMDB=off
 ENV GOMODCACHE=/go/pkg/mod
-
-COPY go.mod go.sum ./
-RUN go mod download || go mod download
+ENV GOFLAGS=-mod=vendor
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" -o zeek_runner .

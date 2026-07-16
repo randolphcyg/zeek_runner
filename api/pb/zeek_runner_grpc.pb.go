@@ -26,12 +26,13 @@ const (
 	ZeekAnalysisService_ExtractAsync_FullMethodName        = "/zeek_runner.ZeekAnalysisService/ExtractAsync"
 	ZeekAnalysisService_GetTaskStatus_FullMethodName       = "/zeek_runner.ZeekAnalysisService/GetTaskStatus"
 	ZeekAnalysisService_GetParentTaskStatus_FullMethodName = "/zeek_runner.ZeekAnalysisService/GetParentTaskStatus"
-	ZeekAnalysisService_HealthCheck_FullMethodName         = "/zeek_runner.ZeekAnalysisService/HealthCheck"
+	ZeekAnalysisService_CapacityCheck_FullMethodName       = "/zeek_runner.ZeekAnalysisService/CapacityCheck"
 	ZeekAnalysisService_VersionCheck_FullMethodName        = "/zeek_runner.ZeekAnalysisService/VersionCheck"
 	ZeekAnalysisService_ZeekSyntaxCheck_FullMethodName     = "/zeek_runner.ZeekAnalysisService/ZeekSyntaxCheck"
 	ZeekAnalysisService_ListScripts_FullMethodName         = "/zeek_runner.ZeekAnalysisService/ListScripts"
 	ZeekAnalysisService_GetScript_FullMethodName           = "/zeek_runner.ZeekAnalysisService/GetScript"
 	ZeekAnalysisService_ReloadScripts_FullMethodName       = "/zeek_runner.ZeekAnalysisService/ReloadScripts"
+	ZeekAnalysisService_ApplyBehaviorPolicy_FullMethodName = "/zeek_runner.ZeekAnalysisService/ApplyBehaviorPolicy"
 	ZeekAnalysisService_GetTaskHits_FullMethodName         = "/zeek_runner.ZeekAnalysisService/GetTaskHits"
 )
 
@@ -48,12 +49,13 @@ type ZeekAnalysisServiceClient interface {
 	ExtractAsync(ctx context.Context, in *ExtractAsyncRequest, opts ...grpc.CallOption) (*ExtractAsyncResponse, error)
 	GetTaskStatus(ctx context.Context, in *TaskStatusRequest, opts ...grpc.CallOption) (*TaskStatusResponse, error)
 	GetParentTaskStatus(ctx context.Context, in *ParentTaskStatusRequest, opts ...grpc.CallOption) (*ParentTaskStatusResponse, error)
-	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+	CapacityCheck(ctx context.Context, in *CapacityCheckRequest, opts ...grpc.CallOption) (*CapacityCheckResponse, error)
 	VersionCheck(ctx context.Context, in *VersionCheckRequest, opts ...grpc.CallOption) (*VersionCheckResponse, error)
 	ZeekSyntaxCheck(ctx context.Context, in *ZeekSyntaxCheckRequest, opts ...grpc.CallOption) (*ZeekSyntaxCheckResponse, error)
 	ListScripts(ctx context.Context, in *ListScriptsRequest, opts ...grpc.CallOption) (*ListScriptsResponse, error)
 	GetScript(ctx context.Context, in *GetScriptRequest, opts ...grpc.CallOption) (*ScriptInfo, error)
 	ReloadScripts(ctx context.Context, in *ReloadScriptsRequest, opts ...grpc.CallOption) (*ReloadScriptsResponse, error)
+	ApplyBehaviorPolicy(ctx context.Context, in *ApplyBehaviorPolicyRequest, opts ...grpc.CallOption) (*ApplyBehaviorPolicyResponse, error)
 	GetTaskHits(ctx context.Context, in *GetTaskHitsRequest, opts ...grpc.CallOption) (*GetTaskHitsResponse, error)
 }
 
@@ -135,10 +137,10 @@ func (c *zeekAnalysisServiceClient) GetParentTaskStatus(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *zeekAnalysisServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+func (c *zeekAnalysisServiceClient) CapacityCheck(ctx context.Context, in *CapacityCheckRequest, opts ...grpc.CallOption) (*CapacityCheckResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(HealthCheckResponse)
-	err := c.cc.Invoke(ctx, ZeekAnalysisService_HealthCheck_FullMethodName, in, out, cOpts...)
+	out := new(CapacityCheckResponse)
+	err := c.cc.Invoke(ctx, ZeekAnalysisService_CapacityCheck_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +197,16 @@ func (c *zeekAnalysisServiceClient) ReloadScripts(ctx context.Context, in *Reloa
 	return out, nil
 }
 
+func (c *zeekAnalysisServiceClient) ApplyBehaviorPolicy(ctx context.Context, in *ApplyBehaviorPolicyRequest, opts ...grpc.CallOption) (*ApplyBehaviorPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApplyBehaviorPolicyResponse)
+	err := c.cc.Invoke(ctx, ZeekAnalysisService_ApplyBehaviorPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zeekAnalysisServiceClient) GetTaskHits(ctx context.Context, in *GetTaskHitsRequest, opts ...grpc.CallOption) (*GetTaskHitsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetTaskHitsResponse)
@@ -218,12 +230,13 @@ type ZeekAnalysisServiceServer interface {
 	ExtractAsync(context.Context, *ExtractAsyncRequest) (*ExtractAsyncResponse, error)
 	GetTaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error)
 	GetParentTaskStatus(context.Context, *ParentTaskStatusRequest) (*ParentTaskStatusResponse, error)
-	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	CapacityCheck(context.Context, *CapacityCheckRequest) (*CapacityCheckResponse, error)
 	VersionCheck(context.Context, *VersionCheckRequest) (*VersionCheckResponse, error)
 	ZeekSyntaxCheck(context.Context, *ZeekSyntaxCheckRequest) (*ZeekSyntaxCheckResponse, error)
 	ListScripts(context.Context, *ListScriptsRequest) (*ListScriptsResponse, error)
 	GetScript(context.Context, *GetScriptRequest) (*ScriptInfo, error)
 	ReloadScripts(context.Context, *ReloadScriptsRequest) (*ReloadScriptsResponse, error)
+	ApplyBehaviorPolicy(context.Context, *ApplyBehaviorPolicyRequest) (*ApplyBehaviorPolicyResponse, error)
 	GetTaskHits(context.Context, *GetTaskHitsRequest) (*GetTaskHitsResponse, error)
 	mustEmbedUnimplementedZeekAnalysisServiceServer()
 }
@@ -256,8 +269,8 @@ func (UnimplementedZeekAnalysisServiceServer) GetTaskStatus(context.Context, *Ta
 func (UnimplementedZeekAnalysisServiceServer) GetParentTaskStatus(context.Context, *ParentTaskStatusRequest) (*ParentTaskStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetParentTaskStatus not implemented")
 }
-func (UnimplementedZeekAnalysisServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+func (UnimplementedZeekAnalysisServiceServer) CapacityCheck(context.Context, *CapacityCheckRequest) (*CapacityCheckResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CapacityCheck not implemented")
 }
 func (UnimplementedZeekAnalysisServiceServer) VersionCheck(context.Context, *VersionCheckRequest) (*VersionCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method VersionCheck not implemented")
@@ -273,6 +286,9 @@ func (UnimplementedZeekAnalysisServiceServer) GetScript(context.Context, *GetScr
 }
 func (UnimplementedZeekAnalysisServiceServer) ReloadScripts(context.Context, *ReloadScriptsRequest) (*ReloadScriptsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReloadScripts not implemented")
+}
+func (UnimplementedZeekAnalysisServiceServer) ApplyBehaviorPolicy(context.Context, *ApplyBehaviorPolicyRequest) (*ApplyBehaviorPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyBehaviorPolicy not implemented")
 }
 func (UnimplementedZeekAnalysisServiceServer) GetTaskHits(context.Context, *GetTaskHitsRequest) (*GetTaskHitsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTaskHits not implemented")
@@ -424,20 +440,20 @@ func _ZeekAnalysisService_GetParentTaskStatus_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZeekAnalysisService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HealthCheckRequest)
+func _ZeekAnalysisService_CapacityCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CapacityCheckRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZeekAnalysisServiceServer).HealthCheck(ctx, in)
+		return srv.(ZeekAnalysisServiceServer).CapacityCheck(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ZeekAnalysisService_HealthCheck_FullMethodName,
+		FullMethod: ZeekAnalysisService_CapacityCheck_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZeekAnalysisServiceServer).HealthCheck(ctx, req.(*HealthCheckRequest))
+		return srv.(ZeekAnalysisServiceServer).CapacityCheck(ctx, req.(*CapacityCheckRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -532,6 +548,24 @@ func _ZeekAnalysisService_ReloadScripts_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZeekAnalysisService_ApplyBehaviorPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyBehaviorPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZeekAnalysisServiceServer).ApplyBehaviorPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZeekAnalysisService_ApplyBehaviorPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZeekAnalysisServiceServer).ApplyBehaviorPolicy(ctx, req.(*ApplyBehaviorPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZeekAnalysisService_GetTaskHits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetTaskHitsRequest)
 	if err := dec(in); err != nil {
@@ -586,8 +620,8 @@ var ZeekAnalysisService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZeekAnalysisService_GetParentTaskStatus_Handler,
 		},
 		{
-			MethodName: "HealthCheck",
-			Handler:    _ZeekAnalysisService_HealthCheck_Handler,
+			MethodName: "CapacityCheck",
+			Handler:    _ZeekAnalysisService_CapacityCheck_Handler,
 		},
 		{
 			MethodName: "VersionCheck",
@@ -608,6 +642,10 @@ var ZeekAnalysisService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReloadScripts",
 			Handler:    _ZeekAnalysisService_ReloadScripts_Handler,
+		},
+		{
+			MethodName: "ApplyBehaviorPolicy",
+			Handler:    _ZeekAnalysisService_ApplyBehaviorPolicy_Handler,
 		},
 		{
 			MethodName: "GetTaskHits",

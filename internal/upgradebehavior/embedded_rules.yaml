@@ -1,0 +1,398 @@
+# IoT 升级行为识别全局基线规则
+# 版本化、Git 发布、启动时校验和编译
+#
+# 操作符说明：
+#   equals        - 完全匹配（大小写不敏感）
+#   prefix        - 前缀匹配
+#   suffix        - 后缀匹配
+#   contains      - 子串匹配
+#   regex         - 正则匹配（RE2 语法，加载时预编译）
+#   set_contains  - 集合交集（JSON keys 等）
+#   magic         - 文件 magic 匹配（扫描器输出的名称：zip/elf/uimage/bin/gzip/rar/7z/bzip2/dex）
+#   json_key      - JSON 顶层 key 存在性
+#
+# 信号字段说明：
+#   required: true  - 必需信号，未命中则规则不匹配
+#   deny: true      - 否定信号，命中则规则被排除（score 必须为 0）
+#   content_type 维度的 equals 操作符自动忽略 MIME 参数（如 charset=utf-8）
+#
+# 信号维度（signals 中允许使用）：
+#   uri, host, sni, dns, content_type, content_disposition, extension,
+#   range_status, json_keys, file_magic, body_keyword, body_regex, file_hash
+#
+# 硬条件维度（hard_conditions 中允许使用）：
+#   protocol, source, method, status_code, port, direction
+#
+# behavior_stage: check, notify, download, verify, status, heartbeat
+# artifact_kind: firmware, app, manifest, checksum, unknown
+#
+# url_type 枚举（与 vendor_catalog.yaml 一致）：
+#   firmware_download    - 固件下载（HTTP GET 二进制固件）
+#   app_download         - App 下载（HTTP GET APK）
+#   app_upgrade          - App 层升级（版本检查 + APK 下载）
+#   upgrade_check        - 升级检查（HTTP GET 版本信息 JSON）
+#   ota_chunk_download   - OTA 分块下载（HTTP GET Range, 206 Partial）
+#   hash_check           - 升级校验（HTTP GET .sha256/.md5）
+#   upgrade_status       - 升级状态上报（HTTP POST 设备→服务器）
+#   upgrade_notify       - 升级通知推送（HTTP POST 服务器→设备）
+#   heartbeat            - 心跳上报当前版本（HTTP POST）
+#   tls_sni              - HTTPS 升级连接（TLS SNI 提取域名）
+#   dns_domain           - 升级服务器域名解析（DNS query）
+
+version: "1.0.0"
+description: "IoT 升级行为识别全局基线规则，覆盖固件/App 的检查、通知、下载、分块下载、校验、状态上报和心跳"
+
+rules:
+- rule_id: GLOBAL-DOWNLOAD-001
+  rule_version: "2026-07-12"
+  url_type: firmware_download
+  behavior_stage: download
+  artifact_kind: firmware
+  priority: 100
+  score_threshold: 60
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_download]
+  - dimension: method
+    operator: equals
+    values: [GET]
+  - dimension: status_code
+    operator: equals
+    values: [200]
+  signals:
+  - dimension: extension
+    operator: suffix
+    values:
+    - ".bin"
+    - ".img"
+    - ".rom"
+    - ".fw"
+    - ".firmware"
+    - ".trx"
+    - ".chk"
+    - ".npk"
+    - ".zip"
+    - ".rar"
+    - ".7z"
+    - ".tar"
+    - ".gz"
+    - ".tgz"
+    - ".pkg"
+    - ".ipk"
+    - ".upd"
+    - ".ota"
+    - ".upg"
+    - ".stk"
+    - ".pat"
+    score: 80
+    required: true
+  - dimension: content_type
+    operator: equals
+    values: [application/octet-stream, application/x-firmware, application/x-msdownload]
+    score: 30
+  - dimension: content_disposition
+    operator: regex
+    regex: 'attachment;.*filename=.*\.(bin|img|fw|rom|trx|chk|pat|ota|upg|upd|stk)'
+    score: 40
+  - dimension: file_magic
+    operator: magic
+    values: [zip, elf, uimage, bin, gzip, rar, 7z, bzip2]
+    score: 50
+  archive:
+    enabled: true
+    retain_days: 30
+  description: "固件二进制下载（HTTP GET 200，扩展名/content-type/magic 命中）"
+  source: global_baseline
+- rule_id: GLOBAL-DOWNLOAD-002
+  rule_version: "2026-07-12"
+  url_type: app_download
+  behavior_stage: download
+  artifact_kind: app
+  priority: 100
+  score_threshold: 50
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_download]
+  - dimension: method
+    operator: equals
+    values: [GET]
+  - dimension: status_code
+    operator: equals
+    values: [200]
+  signals:
+  - dimension: extension
+    operator: suffix
+    values: [".apk"]
+    score: 80
+    required: true
+  - dimension: content_type
+    operator: equals
+    values: [application/vnd.android.package-archive, application/vnd.android.package]
+    score: 60
+  - dimension: file_magic
+    operator: magic
+    values: [zip, dex]
+    score: 40
+  archive:
+    enabled: true
+    retain_days: 30
+  description: "Android APK 下载（HTTP GET 200，.apk 扩展名/package-archive content-type 命中）"
+  source: global_baseline
+- rule_id: GLOBAL-CHECK-001
+  rule_version: "2026-07-12"
+  url_type: app_upgrade
+  behavior_stage: check
+  artifact_kind: app
+  priority: 90
+  score_threshold: 50
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_request, http_response_body]
+  - dimension: method
+    operator: equals
+    values: [GET]
+  signals:
+  - dimension: uri
+    operator: contains
+    values: [/api/app/version, /api/app/download, /api/app/upgrade]
+    score: 50
+  - dimension: content_type
+    operator: equals
+    values: [application/json]
+    score: 20
+  - dimension: json_keys
+    operator: set_contains
+    values: [latest_version, apk_url, apk_size, apk_sha256, update_required]
+    score: 40
+  - dimension: content_type
+    operator: equals
+    values: [application/vnd.android.package-archive]
+    score: 60
+  archive:
+    enabled: false
+  description: "App 升级版本检查（HTTP GET，URI/JSON keys 命中版本接口或 APK content-type）"
+  source: global_baseline
+- rule_id: GLOBAL-CHECK-002
+  rule_version: "2026-07-12"
+  url_type: upgrade_check
+  behavior_stage: check
+  artifact_kind: manifest
+  priority: 80
+  score_threshold: 50
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_request, http_response_body]
+  - dimension: method
+    operator: equals
+    values: [GET]
+  signals:
+  - dimension: uri
+    operator: contains
+    values: [check, version, latest, ota, update]
+    score: 20
+  - dimension: content_type
+    operator: equals
+    values: [application/json, application/xml, text/xml]
+    score: 20
+  - dimension: json_keys
+    operator: set_contains
+    values: [version, latest_version, firmware_url, firmware_version, update_available, update_required, release_notes]
+    score: 50
+    required: true
+  - dimension: extension
+    operator: suffix
+    values: [".bin", ".img", ".apk", ".rom", ".fw", ".zip", ".tar", ".gz", ".7z", ".rar"]
+    score: 0
+    deny: true
+    # URI 以固件扩展名结尾的是实际下载，排除升级检查
+  archive:
+    enabled: false
+  description: "固件升级检查（HTTP GET，JSON keys 命中版本/固件信息）"
+  source: global_baseline
+- rule_id: GLOBAL-DOWNLOAD-003
+  rule_version: "2026-07-12"
+  url_type: ota_chunk_download
+  behavior_stage: download
+  artifact_kind: firmware
+  priority: 110
+  score_threshold: 50
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_download]
+  - dimension: status_code
+    operator: equals
+    values: [206]
+  signals:
+  - dimension: range_status
+    operator: equals
+    values: ["true"]
+    score: 60
+    required: true
+  - dimension: extension
+    operator: suffix
+    values: [".bin", ".img", ".rom", ".fw", ".ota", ".upg"]
+    score: 30
+  archive:
+    enabled: true
+    retain_days: 30
+  description: "OTA 分块下载（HTTP 206 Partial Content，Range 请求）"
+  source: global_baseline
+- rule_id: GLOBAL-VERIFY-001
+  rule_version: "2026-07-12"
+  url_type: hash_check
+  behavior_stage: verify
+  artifact_kind: checksum
+  priority: 90
+  score_threshold: 50
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_request, http_download]
+  - dimension: method
+    operator: equals
+    values: [GET]
+  signals:
+  - dimension: extension
+    operator: suffix
+    values: [".sha256", ".md5", ".hash", ".checksum", ".sig"]
+    score: 90
+    required: true
+  - dimension: content_type
+    operator: equals
+    values: [text/plain]
+    score: 10
+  archive:
+    enabled: false
+  description: "升级校验文件下载（.sha256/.md5/.sig 等校验文件）"
+  source: global_baseline
+- rule_id: GLOBAL-STATUS-001
+  rule_version: "2026-07-12"
+  url_type: upgrade_status
+  behavior_stage: status
+  artifact_kind: unknown
+  priority: 80
+  score_threshold: 40
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_request]
+  - dimension: method
+    operator: equals
+    values: [POST]
+  signals:
+  - dimension: uri
+    operator: contains
+    values: [status, report, upgrade, firmware]
+    score: 20
+  - dimension: json_keys
+    operator: set_contains
+    values: [status, progress, device_id, firmware_version, target_version]
+    score: 40
+    required: true
+  archive:
+    enabled: false
+  description: "升级状态上报（HTTP POST，JSON keys 命中状态/进度字段）"
+  source: global_baseline
+- rule_id: GLOBAL-NOTIFY-001
+  rule_version: "2026-07-12"
+  url_type: upgrade_notify
+  behavior_stage: notify
+  artifact_kind: manifest
+  priority: 80
+  score_threshold: 40
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_request]
+  - dimension: method
+    operator: equals
+    values: [POST]
+  signals:
+  - dimension: uri
+    operator: contains
+    values: [notify, push, upgrade, firmware]
+    score: 20
+  - dimension: json_keys
+    operator: set_contains
+    values: [version, url, md5, size_bytes, release_notes, force_update]
+    score: 40
+    required: true
+  archive:
+    enabled: false
+  description: "升级通知推送（HTTP POST，JSON keys 命中版本/URL 字段）"
+  source: global_baseline
+- rule_id: GLOBAL-HEARTBEAT-001
+  rule_version: "2026-07-12"
+  url_type: heartbeat
+  behavior_stage: heartbeat
+  artifact_kind: unknown
+  priority: 70
+  score_threshold: 40
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [http_request]
+  - dimension: method
+    operator: equals
+    values: [POST]
+  signals:
+  - dimension: uri
+    operator: contains
+    values: [heartbeat, ping, alive, keepalive]
+    score: 25
+  - dimension: json_keys
+    operator: set_contains
+    values: [uptime, heartbeat, device_id, firmware_version, status]
+    score: 40
+    required: true
+  archive:
+    enabled: false
+  description: "设备心跳上报（HTTP POST，URI/JSON keys 命中心跳接口）"
+  source: global_baseline
+- rule_id: GLOBAL-CHECK-003
+  rule_version: "2026-07-12"
+  url_type: tls_sni
+  behavior_stage: check
+  artifact_kind: unknown
+  priority: 50
+  score_threshold: 30
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [tls_sni]
+  signals:
+  - dimension: sni
+    operator: contains
+    values: [firmware, upgrade, update, ota, dlcdn, download, support, api]
+    score: 30
+    required: true
+  archive:
+    enabled: false
+  description: "HTTPS 流量仅通过 SNI 推断升级行为，标注 metadata_only"
+  source: global_baseline
+- rule_id: GLOBAL-CHECK-004
+  rule_version: "2026-07-12"
+  url_type: dns_domain
+  behavior_stage: check
+  artifact_kind: unknown
+  priority: 50
+  score_threshold: 30
+  hard_conditions:
+  - dimension: source
+    operator: equals
+    values: [dns_query]
+  signals:
+  - dimension: dns
+    operator: contains
+    values: [firmware, upgrade, update, ota, dlcdn, download, support]
+    score: 30
+    required: true
+  archive:
+    enabled: false
+  description: "DNS 查询推断升级服务器域名（含 firmware/ota/upgrade 等关键词）"
+  source: global_baseline

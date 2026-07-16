@@ -219,6 +219,26 @@ func MergeConfigWithEnv(fileCfg *Config, envCfg *Config) *Config {
 		result.Zeek.ScriptReloadInterval = fileCfg.Zeek.ScriptReloadInterval
 	}
 
+	// Behavior config merge
+	if fileCfg.Behavior.RulesPath != "" && os.Getenv("BEHAVIOR_RULES_PATH") == "" {
+		result.Behavior.RulesPath = fileCfg.Behavior.RulesPath
+	}
+	if fileCfg.Behavior.Required && os.Getenv("BEHAVIOR_REQUIRED") == "" {
+		result.Behavior.Required = true
+	}
+	if fileCfg.Behavior.ArchiveEnabled && os.Getenv("BEHAVIOR_ARCHIVE_ENABLED") == "" {
+		result.Behavior.ArchiveEnabled = fileCfg.Behavior.ArchiveEnabled
+	}
+	if fileCfg.Behavior.ArchiveDir != "" && os.Getenv("BEHAVIOR_ARCHIVE_DIR") == "" {
+		result.Behavior.ArchiveDir = fileCfg.Behavior.ArchiveDir
+	}
+	if fileCfg.Behavior.ArchiveKeyHex != "" && os.Getenv("BEHAVIOR_ARCHIVE_KEY_HEX") == "" {
+		result.Behavior.ArchiveKeyHex = fileCfg.Behavior.ArchiveKeyHex
+	}
+	if fileCfg.Behavior.ArchiveRetention > 0 && os.Getenv("BEHAVIOR_ARCHIVE_RETENTION_DAYS") == "" {
+		result.Behavior.ArchiveRetention = fileCfg.Behavior.ArchiveRetention
+	}
+
 	return &result
 }
 

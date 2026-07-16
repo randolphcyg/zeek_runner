@@ -18,14 +18,14 @@ while [[ $# -gt 0 ]]; do
       echo "  --ubuntu-amd64          Same as --ubuntu"
       echo "  --ubuntu-arm64          Build linux/arm64 image for Ubuntu 24.04 ARM64"
       echo "  --platform PLATFORM     Cross-build for custom platform"
-      echo "  --version VERSION       Set version (default: 5.0)"
+      echo "  --version VERSION       Set version (default: 5.1)"
       echo "  --apt-mirror URL        Override Ubuntu apt mirror"
       echo "  --no-save               Build image but do not save tar.gz"
       echo ""
       echo "Examples:"
       echo "  $0                              Build Docker for native arch"
       echo "  $0 --ubuntu                     Build Docker for Ubuntu 24.04 x86_64"
-      echo "  $0 --ubuntu-arm64 --version 5.0 Build Docker for Ubuntu ARM64"
+      echo "  $0 --ubuntu-arm64 --version 5.1 Build Docker for Ubuntu ARM64"
       echo "  $0 --ubuntu --no-save           Build without saving tar.gz"
       exit 0
       ;;
@@ -52,7 +52,7 @@ done
 
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-DEFAULT_VERSION="5.0"
+DEFAULT_VERSION="5.1"
 
 if [ "$CLEAN" == true ]; then
   echo "Cleaning build artifacts..."
@@ -81,6 +81,10 @@ if [ -n "$APT_MIRROR" ]; then
   echo "Apt Mirror: $APT_MIRROR"
 fi
 echo "========================================"
+
+echo ""
+echo "Syncing vendor directory..."
+go mod vendor
 
 echo ""
 echo "Building Docker image..."

@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type HTTPHandler struct {
@@ -37,13 +39,10 @@ func (h *HTTPHandler) HandleAnalysis(c *gin.Context) {
 
 	resp, err := h.service.ExecuteTaskInPool(c.Request.Context(), req)
 	if err != nil {
-		code := httpCodeFromError(err)
-		if strings.Contains(err.Error(), "pool full") {
-			code = http.StatusServiceUnavailable
-		}
-		response(c, code, err.Error(), err)
+		response(c, httpCodeFromError(err), err.Error(), err)
 		return
 	}
+
 	success(c, resp)
 }
 
@@ -61,13 +60,10 @@ func (h *HTTPHandler) HandleExtract(c *gin.Context) {
 
 	resp, err := h.service.ExecuteExtractTask(c.Request.Context(), req)
 	if err != nil {
-		code := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "pool full") {
-			code = http.StatusServiceUnavailable
-		}
-		response(c, code, err.Error(), err)
+		response(c, httpCodeFromError(err), err.Error(), err)
 		return
 	}
+
 	success(c, resp)
 }
 
@@ -85,14 +81,7 @@ func (h *HTTPHandler) HandleAsyncAnalysis(c *gin.Context) {
 
 	task, err := h.service.SubmitAsyncTask(c.Request.Context(), req)
 	if err != nil {
-		code := httpCodeFromError(err)
-		if strings.Contains(err.Error(), "pool full") {
-			code = http.StatusServiceUnavailable
-		}
-		if strings.Contains(err.Error(), "Redis required") {
-			code = http.StatusServiceUnavailable
-		}
-		response(c, code, err.Error(), err)
+		response(c, httpCodeFromError(err), err.Error(), err)
 		return
 	}
 
@@ -118,14 +107,8 @@ func (h *HTTPHandler) HandleExtractAsync(c *gin.Context) {
 
 	task, err := h.service.SubmitExtractAsyncTask(c.Request.Context(), req)
 	if err != nil {
-		code := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "pool full") {
-			code = http.StatusServiceUnavailable
-		}
-		if strings.Contains(err.Error(), "Redis required") {
-			code = http.StatusServiceUnavailable
-		}
-		response(c, code, err.Error(), err)
+		// 容量满与依赖故障均映射为 503，但通过 err.Error() 保留明确错误文案以便调用方区分。
+		response(c, httpCodeFromError(err), err.Error(), err)
 		return
 	}
 
@@ -287,6 +270,12 @@ func (h *HTTPHandler) HandleReloadScripts(c *gin.Context) {
 
 func httpCodeFromError(err error) int {
 	switch {
+	// 容量满（异步准入 sentinel 或同步 pool 返回的 ResourceExhausted 状态码）-> 503
+	case errors.Is(err, ErrCapacityExhausted), status.Code(err) == codes.ResourceExhausted:
+		return http.StatusServiceUnavailable
+	// 依赖故障（Redis 不可用等）-> 503，不得误报为容量满
+	case errors.Is(err, ErrDependencyUnavailable), status.Code(err) == codes.Unavailable:
+		return http.StatusServiceUnavailable
 	case errors.Is(err, ErrScriptNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, ErrScriptInvalid):
@@ -326,12 +315,22 @@ func (h *HTTPHandler) Healthz(c *gin.Context) {
 		}
 	}
 	snapshot := h.service.resourceSnapshot(c.Request.Context())
+	behaviorReady := h.app.IsBehaviorReady()
+	rulesetSHA := ""
+	rulesVersion := ""
+	if h.app.BehaviorEngine != nil {
+		rulesetSHA = h.app.BehaviorEngine.rulesetSHA
+		rulesVersion = h.app.BehaviorEngine.ruleSet.Version
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":            msg,
 		"pool_running":      h.app.TaskPool.Running(),
 		"pool_capacity":     cfg.Pool.Size,
 		"kafka_ready":       h.app.IsKafkaReady(),
+		"behavior_ready":    behaviorReady,
+		"ruleset_sha256":    rulesetSHA,
+		"rules_version":     rulesVersion,
 		"redis_ready":       redisReady,
 		"timestamp":         time.Now().Format(time.RFC3339),
 		"version":           "1.0.0",

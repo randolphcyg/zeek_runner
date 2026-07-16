@@ -1,0 +1,15 @@
+{
+  "refID": "687f840a84cb514a665231153932ab75",
+  "pcapID": "efa4f398ea425fd17a0974e22e1b5e6c",
+  "uid": "C121_8_124_12000427_115_124_100080",
+  "txSeq": 1,
+  "payloadSha256": "bd103fcd4da6f9dad33bd43c46e75db92c64e852e26104df1af321bda56d3e6d",
+  "ruleID": "GLOBAL-DOWNLOAD-001",
+  "createdAt": "2026-07-12T16:38:36.958777758+08:00",
+  "expiresAt": "2026-08-11T16:38:36.958777758+08:00",
+  "objectPath": "/opt/zeek_runner/archive/687f840a84cb514a665231153932ab75.bin.enc",
+  "objectSize": 276,
+  "encrypted": true,
+  "keyID": "5a6c168872a06264",
+  "status": "archived"
+}

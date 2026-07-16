@@ -19,14 +19,14 @@ kafka:
   saslPassword: "change-me-in-production" # SASL 认证密码
 
 pool:
-  size: 30                                    # 本地 worker 池容量
+  size: 80                                    # worker 池容量，生产环境建议 >= weightedCapacity
   maxBlocking: 10000                          # worker 池阻塞提交上限
   timeoutMinutes: 10                          # 单个 Zeek 执行超时时间(分钟)
 
 scheduler:
-  weightedCapacity: 30                        # 副本可同时运行的资源权重容量，按 pcap 大小和脚本权重扣减
+  weightedCapacity: 170                        # 副本可同时运行的资源权重容量；17脚本/batch时支持每副本并发10个batch
   maxClaimBatch: 1                            # 单轮从 Redis Stream 主动拉取的 batch job 数量
-  leaseTimeout: "10m"                         # Redis Stream pending 任务可被其他副本 reclaim 的最小空闲时间
+  leaseTimeout: "2m"                         # Redis Stream pending 任务可被其他副本 reclaim 的最小空闲时间
   kafkaLagHighWatermark: 0                    # Kafka lag 背压阈值，0 表示不因 lag 停止领取任务
   minFreeDiskPercent: 5                       # 磁盘剩余空间低于该百分比时停止领取新任务
 
@@ -64,6 +64,14 @@ zeek:
   autoReloadScripts: true                     # 自动监听托管脚本变更并重载脚本元数据
   scriptReloadDebounce: "2s"                  # 文件事件合并等待时间
   scriptReloadInterval: "60s"                 # 定时兜底重扫间隔
+
+behavior:
+  rulesPath: "/opt/zeek_runner/rules/behavior_runtime.example.yaml"  # 行为识别规则 YAML；可基于 rules/behavior_runtime.example.yaml 自定义
+  required: true                                               # 缺失或校验失败时拒绝就绪
+  archiveEnabled: false                                       # 启用命中载荷加密归档
+  archiveDir: "/opt/zeek_runner/archive"                     # 归档存储目录
+  archiveKeyHex: "319aeb9e2163d8a97f06f761e3328c384f39e86a6d3c290113519a71578ac263"  # AES-256 密钥（64 位十六进制），生产环境务必更换
+  archiveRetention: 30                                       # 归档保留天数（默认 30）
 
 otel:
   enabled: false

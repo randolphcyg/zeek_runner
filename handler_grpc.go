@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -33,9 +33,6 @@ func (s *GRPCServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.A
 
 	resp, err := s.service.ExecuteTaskInPool(ctx, ar)
 	if err != nil {
-		if strings.Contains(err.Error(), "pool full") {
-			return nil, status.Error(codes.ResourceExhausted, err.Error())
-		}
 		return nil, grpcStatusFromError(err)
 	}
 
@@ -55,10 +52,7 @@ func (s *GRPCServer) Extract(ctx context.Context, req *pb.ExtractRequest) (*pb.E
 
 	resp, err := s.service.ExecuteExtractTask(ctx, er)
 	if err != nil {
-		if strings.Contains(err.Error(), "pool full") {
-			return nil, status.Error(codes.ResourceExhausted, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, grpcStatusFromError(err)
 	}
 
 	return &pb.ExtractResponse{
@@ -67,42 +61,37 @@ func (s *GRPCServer) Extract(ctx context.Context, req *pb.ExtractRequest) (*pb.E
 	}, nil
 }
 
-func (s *GRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
-	LogServiceEvent("health_check")
-
-	statusMsg := "ok"
-	if !s.app.IsKafkaReady() {
-		statusMsg = "kafka_down"
-	}
-	cfg := s.app.ConfigManager.Get()
-
-	redisReady := s.app.IsRedisReady()
-	if s.app.TaskManager != nil {
-		if err := s.app.TaskManager.HealthCheck(ctx); err != nil {
-			redisReady = false
-		}
-	}
-	snapshot := s.service.resourceSnapshot(ctx)
-
-	return &pb.HealthCheckResponse{
-		Status:           statusMsg,
-		PoolRunning:      int32(s.app.TaskPool.Running()),
-		PoolCapacity:     int32(cfg.Pool.Size),
-		KafkaReady:       s.app.IsKafkaReady(),
-		RedisReady:       redisReady,
+// CapacityCheck 返回单实例容量口径快照，供 downstream 做背压与下发决策。
+// 标准存活/就绪检查请使用 grpc.health.v1.Health，不要在此处模拟健康检查。
+func (s *GRPCServer) CapacityCheck(ctx context.Context, req *pb.CapacityCheckRequest) (*pb.CapacityCheckResponse, error) {
+	snap := s.service.CapacityCheck(ctx)
+	return &pb.CapacityCheckResponse{
+		AcceptingJobs:    snap.AcceptingJobs,
+		PoolRunning:      int32(snap.PoolRunning),
+		PoolCapacity:     int32(snap.PoolCapacity),
+		WeightedRunning:  int32(snap.WeightedRunning),
+		WeightedCapacity: int32(snap.WeightedCapacity),
+		QueuePending:     snap.QueuePending,
 		Timestamp:        time.Now().Format(time.RFC3339),
-		Version:          Version,
-		GoVersion:        runtime.Version(),
-		Os:               runtime.GOOS,
-		Arch:             runtime.GOARCH,
-		QueuePending:     snapshot.QueuePending,
-		WeightedRunning:  int32(snapshot.WeightedRunning),
-		WeightedCapacity: int32(snapshot.WeightedCapacity),
-		CpuUsage:         snapshot.CPUUsage,
-		MemUsage:         snapshot.MemUsage,
-		DiskIoBusy:       snapshot.DiskIOBusy,
-		KafkaLag:         snapshot.KafkaLag,
-		AcceptingJobs:    snapshot.AcceptingJobs,
+	}, nil
+}
+
+// ApplyBehaviorPolicy 接收外部控制面下发的完整禁用厂商集合。
+// 规则内容和 SHA 不变，仅更新 matcher 的有效规则快照；已有会话保持旧快照，
+// 新会话立即使用新策略。
+func (s *GRPCServer) ApplyBehaviorPolicy(ctx context.Context, req *pb.ApplyBehaviorPolicyRequest) (*pb.ApplyBehaviorPolicyResponse, error) {
+	if s.app == nil || s.app.BehaviorEngine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "behavior engine is not ready")
+	}
+	effectiveCount, disabled, err := s.app.BehaviorEngine.ApplyDisabledVendors(req.GetDisabledVendorIds())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	slog.Info("behavior policy applied", "policy_version", req.GetPolicyVersion(), "disabled_vendors", disabled, "effective_rule_count", effectiveCount)
+	return &pb.ApplyBehaviorPolicyResponse{
+		EffectiveRuleCount: int32(effectiveCount),
+		DisabledVendorIds:  disabled,
+		RulesetSha256:      s.app.BehaviorEngine.rulesetSHA,
 	}, nil
 }
 
@@ -160,12 +149,6 @@ func (s *GRPCServer) AsyncAnalyze(ctx context.Context, req *pb.AsyncAnalyzeReque
 
 	task, err := s.service.SubmitAsyncTask(ctx, ar)
 	if err != nil {
-		if strings.Contains(err.Error(), "pool full") {
-			return nil, status.Error(codes.ResourceExhausted, err.Error())
-		}
-		if strings.Contains(err.Error(), "Redis required") {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
 		return nil, grpcStatusFromError(err)
 	}
 
@@ -181,9 +164,6 @@ func (s *GRPCServer) AsyncAnalyzeBatch(ctx context.Context, req *pb.AsyncAnalyze
 	ar := asyncAnalyzeBatchReqFromGRPC(req)
 	tasks, err := s.service.SubmitAsyncBatchTask(ctx, ar)
 	if err != nil {
-		if strings.Contains(err.Error(), "Redis required") {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
 		return nil, grpcStatusFromError(err)
 	}
 	return &pb.AsyncAnalyzeBatchResponse{
@@ -204,13 +184,8 @@ func (s *GRPCServer) ExtractAsync(ctx context.Context, req *pb.ExtractAsyncReque
 
 	task, err := s.service.SubmitExtractAsyncTask(ctx, er)
 	if err != nil {
-		if strings.Contains(err.Error(), "pool full") {
-			return nil, status.Error(codes.ResourceExhausted, err.Error())
-		}
-		if strings.Contains(err.Error(), "Redis required") {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		// 容量满 -> ResourceExhausted；依赖故障 -> Unavailable；其余 -> grpcStatusFromError
+		return nil, grpcStatusFromError(err)
 	}
 
 	return &pb.ExtractAsyncResponse{
@@ -392,7 +367,16 @@ func scriptInfoToPB(script ScriptInfo) *pb.ScriptInfo {
 }
 
 func grpcStatusFromError(err error) error {
+	// 已是 gRPC status 的错误直接透传（如 executeOfflineTaskInPool 返回的 ResourceExhausted/Internal），
+	// 避免重复包装或被默认分支误报为 Internal。
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
+	}
 	switch {
+	case errors.Is(err, ErrCapacityExhausted):
+		return status.Error(codes.ResourceExhausted, err.Error())
+	case errors.Is(err, ErrDependencyUnavailable):
+		return status.Error(codes.Unavailable, err.Error())
 	case errors.Is(err, ErrScriptNotFound):
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, ErrScriptInvalid),

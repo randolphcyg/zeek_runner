@@ -159,6 +159,7 @@ type Service struct {
 	analysisPublisher     *analysisEventPublisher
 	extractPublisher      *extractEventPublisher
 	verificationPublisher *verificationLogPublisher
+	behaviorEngine        *behaviorEngine
 	scriptRegistryMu      sync.RWMutex
 	scriptRegistry        *scriptRegistry
 }
@@ -199,6 +200,11 @@ func (s *Service) SetFileDedupMgr(fdm *FileDedupManager) {
 	s.fileDedupMgr = fdm
 }
 
+// SetBehaviorEngine 注入行为识别引擎。为 nil 时行为识别功能不启用（URL 事件无 Behavior 块）。
+func (s *Service) SetBehaviorEngine(eng *behaviorEngine) {
+	s.behaviorEngine = eng
+}
+
 func (s *Service) ExecuteTaskInPool(ctx context.Context, req AnalyzeReq) (*AnalyzeResp, error) {
 	req, err := s.prepareAnalyzeReq(req)
 	if err != nil {
@@ -236,8 +242,9 @@ func (s *Service) ExecuteExtractTask(ctx context.Context, req ExtractReq) (*Extr
 }
 
 func (s *Service) SubmitExtractAsyncTask(ctx context.Context, req ExtractReq) (*Task, error) {
-	if s.taskManager == nil {
-		return nil, errors.New("task manager not initialized, Redis required")
+	// 入队前调用与 CapacityCheck 同一套准入逻辑，避免“健康接口说满，但提交仍成功”。
+	if err := s.admitJob(ctx); err != nil {
+		return nil, err
 	}
 
 	task, err := s.taskManager.CreateAndEnqueueExtractTask(ctx, req)
@@ -323,8 +330,9 @@ func (s *Service) SubmitAsyncTask(ctx context.Context, req AnalyzeReq) (*Task, e
 }
 
 func (s *Service) SubmitAsyncBatchTask(ctx context.Context, req AnalyzeBatchReq) ([]*Task, error) {
-	if s.taskManager == nil {
-		return nil, errors.New("task manager not initialized, Redis required")
+	// 与 CapacityCheck 共享准入逻辑：依赖故障返回 Unavailable，容量满返回 ResourceExhausted。
+	if err := s.admitJob(ctx); err != nil {
+		return nil, err
 	}
 
 	req, err := s.prepareAnalyzeBatchReq(req)
@@ -405,6 +413,58 @@ type ParentTaskStatus struct {
 	SubTasks     []*Task
 }
 
+func parentStatusFromTasks(taskID string, tasks []*Task) *ParentTaskStatus {
+	status := &ParentTaskStatus{
+		TaskID:     taskID,
+		TotalCount: len(tasks),
+		SubTasks:   tasks,
+	}
+
+	for _, task := range tasks {
+		if status.PcapID == "" {
+			status.PcapID = task.PcapID
+		}
+		if status.PcapPath == "" {
+			status.PcapPath = task.PcapPath
+		}
+		status.HitCount += task.HitCount
+		status.NoticeCount += task.NoticeCount
+		status.IntelCount += task.IntelCount
+
+		switch task.Status {
+		case TaskStatusPending:
+			status.PendingCount++
+		case TaskStatusRunning:
+			status.RunningCount++
+		case TaskStatusSuccess:
+			status.SuccessCount++
+		case TaskStatusFailed, TaskStatusCanceled:
+			status.FailedCount++
+		case TaskStatusTimeout:
+			status.TimeoutCount++
+		}
+	}
+
+	status.Status = deriveParentStatusFromCounts(status.TotalCount, status.PendingCount, status.RunningCount, status.FailedCount, status.TimeoutCount)
+	return status
+}
+
+func deriveParentStatusFromCounts(total, pending, running, failed, timeout int) string {
+	if total == 0 {
+		return "pending"
+	}
+	if pending > 0 || running > 0 {
+		return "running"
+	}
+	if failed == total {
+		return "failed"
+	}
+	if failed > 0 || timeout > 0 {
+		return "partial_failed"
+	}
+	return "completed"
+}
+
 func (s *Service) GetParentTaskStatus(ctx context.Context, taskID string) (*ParentTaskStatus, error) {
 	if s.taskManager == nil {
 		return nil, errors.New("task manager not initialized")
@@ -428,17 +488,26 @@ func (s *Service) GetParentTaskStatus(ctx context.Context, taskID string) (*Pare
 
 	tasks, err := s.taskManager.GetTasksByParentID(ctx, taskID)
 	if err == nil {
-		status.SubTasks = tasks
-		for _, task := range tasks {
-			if status.PcapID == "" {
-				status.PcapID = task.PcapID
+		recomputed := parentStatusFromTasks(taskID, tasks)
+		if len(tasks) > 0 {
+			if recomputed.TotalCount != status.TotalCount ||
+				recomputed.PendingCount != status.PendingCount ||
+				recomputed.RunningCount != status.RunningCount ||
+				recomputed.SuccessCount != status.SuccessCount ||
+				recomputed.FailedCount != status.FailedCount ||
+				recomputed.TimeoutCount != status.TimeoutCount ||
+				recomputed.Status != status.Status {
+				slog.Warn("parent task status repaired from subtasks",
+					"taskID", taskID,
+					"cachedStatus", status.Status,
+					"actualStatus", recomputed.Status,
+					"cachedTotal", status.TotalCount,
+					"actualTotal", recomputed.TotalCount,
+				)
 			}
-			if status.PcapPath == "" {
-				status.PcapPath = task.PcapPath
-			}
-			status.HitCount += task.HitCount
-			status.NoticeCount += task.NoticeCount
-			status.IntelCount += task.IntelCount
+			status = recomputed
+		} else {
+			status.SubTasks = tasks
 		}
 	}
 
@@ -504,12 +573,16 @@ func (s *Service) StartTaskConsumer(ctx context.Context) {
 				LogServiceEvent("consumer_stopped")
 				return
 			default:
-				if !s.acceptingJobs(ctx) || s.scheduler.Running() >= s.weightedCapacity() {
+				if !s.acceptingJobs(ctx) {
 					time.Sleep(time.Second)
 					continue
 				}
 				job, err := s.taskManager.DequeueBatchJob(ctx, 5*time.Second, s.leaseTimeout())
 				if err != nil {
+					if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+						LogServiceEvent("consumer_stopped")
+						return
+					}
 					LogServiceError("dequeue_failed", err)
 					time.Sleep(time.Second)
 					continue
@@ -527,13 +600,16 @@ func (s *Service) StartTaskConsumer(ctx context.Context) {
 
 func (s *Service) processQueuedBatchJob(ctx context.Context, job *BatchQueueJob) {
 	if job == nil || len(job.UUIDs) == 0 {
+		_ = s.taskManager.AckBatchJob(ctx, job)
 		return
 	}
 	if !s.acceptingJobs(ctx) {
+		_ = s.taskManager.RequeueBatchJob(ctx, job)
 		return
 	}
 	weight := normalizeTaskWeight(job.Weight)
 	if !s.scheduler.TryAcquire(weight, s.weightedCapacity()) {
+		_ = s.taskManager.RequeueBatchJob(ctx, job)
 		return
 	}
 	cfg := s.getConfig()
@@ -863,6 +939,11 @@ func (s *Service) runZeekCommand(parentCtx context.Context, opts zeekRunOptions)
 			)
 			_ = s.publishExtractTaskEvent(parentCtx, opts, "task_failed", "failed", summary, postErr)
 			return zeekRunResult{output: output, stats: stats}, postErr
+		}
+		if err := s.publishURLObservedEvents(parentCtx, opts, workDir); err != nil {
+			LogTaskError("url_observed_event_failed", opts.taskID, opts.uuid, err)
+			_ = s.publishExtractTaskEvent(parentCtx, opts, "task_failed", "failed", summary, err)
+			return zeekRunResult{output: output, stats: stats}, err
 		}
 		if err := s.publishExtractTaskEvent(parentCtx, opts, "task_completed", "success", summary, nil); err != nil {
 			LogTaskError("extract_task_event_failed", opts.taskID, opts.uuid, err,

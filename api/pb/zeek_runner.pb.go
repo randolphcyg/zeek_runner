@@ -377,27 +377,27 @@ func (x *ExtractResponse) GetStartTime() string {
 	return ""
 }
 
-// 健康检查请求
-type HealthCheckRequest struct {
+// 容量检查请求
+type CapacityCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *HealthCheckRequest) Reset() {
-	*x = HealthCheckRequest{}
+func (x *CapacityCheckRequest) Reset() {
+	*x = CapacityCheckRequest{}
 	mi := &file_api_pb_zeek_runner_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *HealthCheckRequest) String() string {
+func (x *CapacityCheckRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*HealthCheckRequest) ProtoMessage() {}
+func (*CapacityCheckRequest) ProtoMessage() {}
 
-func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
+func (x *CapacityCheckRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_api_pb_zeek_runner_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -409,50 +409,39 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
-func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CapacityCheckRequest.ProtoReflect.Descriptor instead.
+func (*CapacityCheckRequest) Descriptor() ([]byte, []int) {
 	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{4}
 }
 
-// 健康检查响应
-type HealthCheckResponse struct {
+// 容量检查响应：仅暴露真实可用于背压的字段
+type CapacityCheckResponse struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	Status           string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	PoolRunning      int32                  `protobuf:"varint,2,opt,name=pool_running,json=poolRunning,proto3" json:"pool_running,omitempty"`
-	PoolCapacity     int32                  `protobuf:"varint,3,opt,name=pool_capacity,json=poolCapacity,proto3" json:"pool_capacity,omitempty"`
-	KafkaReady       bool                   `protobuf:"varint,4,opt,name=kafka_ready,json=kafkaReady,proto3" json:"kafka_ready,omitempty"`
-	Timestamp        string                 `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Version          string                 `protobuf:"bytes,6,opt,name=version,proto3" json:"version,omitempty"`
-	GoVersion        string                 `protobuf:"bytes,7,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"`
-	Os               string                 `protobuf:"bytes,8,opt,name=os,proto3" json:"os,omitempty"`
-	Arch             string                 `protobuf:"bytes,9,opt,name=arch,proto3" json:"arch,omitempty"`
-	RedisReady       bool                   `protobuf:"varint,10,opt,name=redis_ready,json=redisReady,proto3" json:"redis_ready,omitempty"`
-	QueuePending     int64                  `protobuf:"varint,11,opt,name=queue_pending,json=queuePending,proto3" json:"queue_pending,omitempty"`
-	WeightedRunning  int32                  `protobuf:"varint,12,opt,name=weighted_running,json=weightedRunning,proto3" json:"weighted_running,omitempty"`
-	WeightedCapacity int32                  `protobuf:"varint,13,opt,name=weighted_capacity,json=weightedCapacity,proto3" json:"weighted_capacity,omitempty"`
-	CpuUsage         float64                `protobuf:"fixed64,14,opt,name=cpu_usage,json=cpuUsage,proto3" json:"cpu_usage,omitempty"`
-	MemUsage         float64                `protobuf:"fixed64,15,opt,name=mem_usage,json=memUsage,proto3" json:"mem_usage,omitempty"`
-	DiskIoBusy       float64                `protobuf:"fixed64,16,opt,name=disk_io_busy,json=diskIoBusy,proto3" json:"disk_io_busy,omitempty"`
-	KafkaLag         int64                  `protobuf:"varint,17,opt,name=kafka_lag,json=kafkaLag,proto3" json:"kafka_lag,omitempty"`
-	AcceptingJobs    bool                   `protobuf:"varint,18,opt,name=accepting_jobs,json=acceptingJobs,proto3" json:"accepting_jobs,omitempty"`
+	AcceptingJobs    bool                   `protobuf:"varint,1,opt,name=accepting_jobs,json=acceptingJobs,proto3" json:"accepting_jobs,omitempty"`          // 是否仍在接收任务
+	PoolRunning      int32                  `protobuf:"varint,2,opt,name=pool_running,json=poolRunning,proto3" json:"pool_running,omitempty"`                // ants worker pool 实际运行量
+	PoolCapacity     int32                  `protobuf:"varint,3,opt,name=pool_capacity,json=poolCapacity,proto3" json:"pool_capacity,omitempty"`             // ants worker pool 容量
+	WeightedRunning  int32                  `protobuf:"varint,4,opt,name=weighted_running,json=weightedRunning,proto3" json:"weighted_running,omitempty"`    // 当前异步 batch 已占用的本地资源权重
+	WeightedCapacity int32                  `protobuf:"varint,5,opt,name=weighted_capacity,json=weightedCapacity,proto3" json:"weighted_capacity,omitempty"` // 本地权重上限
+	QueuePending     int64                  `protobuf:"varint,6,opt,name=queue_pending,json=queuePending,proto3" json:"queue_pending,omitempty"`             // Redis Stream 中未领取的真实等待量 (XLEN - XPENDING)
+	Timestamp        string                 `protobuf:"bytes,7,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
-func (x *HealthCheckResponse) Reset() {
-	*x = HealthCheckResponse{}
+func (x *CapacityCheckResponse) Reset() {
+	*x = CapacityCheckResponse{}
 	mi := &file_api_pb_zeek_runner_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *HealthCheckResponse) String() string {
+func (x *CapacityCheckResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*HealthCheckResponse) ProtoMessage() {}
+func (*CapacityCheckResponse) ProtoMessage() {}
 
-func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
+func (x *CapacityCheckResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_api_pb_zeek_runner_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -464,135 +453,58 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
-func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use CapacityCheckResponse.ProtoReflect.Descriptor instead.
+func (*CapacityCheckResponse) Descriptor() ([]byte, []int) {
 	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *HealthCheckResponse) GetStatus() string {
+func (x *CapacityCheckResponse) GetAcceptingJobs() bool {
 	if x != nil {
-		return x.Status
+		return x.AcceptingJobs
 	}
-	return ""
+	return false
 }
 
-func (x *HealthCheckResponse) GetPoolRunning() int32 {
+func (x *CapacityCheckResponse) GetPoolRunning() int32 {
 	if x != nil {
 		return x.PoolRunning
 	}
 	return 0
 }
 
-func (x *HealthCheckResponse) GetPoolCapacity() int32 {
+func (x *CapacityCheckResponse) GetPoolCapacity() int32 {
 	if x != nil {
 		return x.PoolCapacity
 	}
 	return 0
 }
 
-func (x *HealthCheckResponse) GetKafkaReady() bool {
-	if x != nil {
-		return x.KafkaReady
-	}
-	return false
-}
-
-func (x *HealthCheckResponse) GetTimestamp() string {
-	if x != nil {
-		return x.Timestamp
-	}
-	return ""
-}
-
-func (x *HealthCheckResponse) GetVersion() string {
-	if x != nil {
-		return x.Version
-	}
-	return ""
-}
-
-func (x *HealthCheckResponse) GetGoVersion() string {
-	if x != nil {
-		return x.GoVersion
-	}
-	return ""
-}
-
-func (x *HealthCheckResponse) GetOs() string {
-	if x != nil {
-		return x.Os
-	}
-	return ""
-}
-
-func (x *HealthCheckResponse) GetArch() string {
-	if x != nil {
-		return x.Arch
-	}
-	return ""
-}
-
-func (x *HealthCheckResponse) GetRedisReady() bool {
-	if x != nil {
-		return x.RedisReady
-	}
-	return false
-}
-
-func (x *HealthCheckResponse) GetQueuePending() int64 {
-	if x != nil {
-		return x.QueuePending
-	}
-	return 0
-}
-
-func (x *HealthCheckResponse) GetWeightedRunning() int32 {
+func (x *CapacityCheckResponse) GetWeightedRunning() int32 {
 	if x != nil {
 		return x.WeightedRunning
 	}
 	return 0
 }
 
-func (x *HealthCheckResponse) GetWeightedCapacity() int32 {
+func (x *CapacityCheckResponse) GetWeightedCapacity() int32 {
 	if x != nil {
 		return x.WeightedCapacity
 	}
 	return 0
 }
 
-func (x *HealthCheckResponse) GetCpuUsage() float64 {
+func (x *CapacityCheckResponse) GetQueuePending() int64 {
 	if x != nil {
-		return x.CpuUsage
+		return x.QueuePending
 	}
 	return 0
 }
 
-func (x *HealthCheckResponse) GetMemUsage() float64 {
+func (x *CapacityCheckResponse) GetTimestamp() string {
 	if x != nil {
-		return x.MemUsage
+		return x.Timestamp
 	}
-	return 0
-}
-
-func (x *HealthCheckResponse) GetDiskIoBusy() float64 {
-	if x != nil {
-		return x.DiskIoBusy
-	}
-	return 0
-}
-
-func (x *HealthCheckResponse) GetKafkaLag() int64 {
-	if x != nil {
-		return x.KafkaLag
-	}
-	return 0
-}
-
-func (x *HealthCheckResponse) GetAcceptingJobs() bool {
-	if x != nil {
-		return x.AcceptingJobs
-	}
-	return false
+	return ""
 }
 
 // 版本检查请求
@@ -2261,6 +2173,120 @@ func (x *ReloadScriptsResponse) GetScripts() []*ScriptInfo {
 	return nil
 }
 
+// 行为规则策略由外部控制面下发。规则 YAML 的内容与 SHA 不变，
+// 仅按厂商配置状态过滤运行时行为规则。
+type ApplyBehaviorPolicyRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	DisabledVendorIds []string               `protobuf:"bytes,1,rep,name=disabled_vendor_ids,json=disabledVendorIds,proto3" json:"disabled_vendor_ids,omitempty"`
+	PolicyVersion     string                 `protobuf:"bytes,2,opt,name=policy_version,json=policyVersion,proto3" json:"policy_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ApplyBehaviorPolicyRequest) Reset() {
+	*x = ApplyBehaviorPolicyRequest{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyBehaviorPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyBehaviorPolicyRequest) ProtoMessage() {}
+
+func (x *ApplyBehaviorPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyBehaviorPolicyRequest.ProtoReflect.Descriptor instead.
+func (*ApplyBehaviorPolicyRequest) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ApplyBehaviorPolicyRequest) GetDisabledVendorIds() []string {
+	if x != nil {
+		return x.DisabledVendorIds
+	}
+	return nil
+}
+
+func (x *ApplyBehaviorPolicyRequest) GetPolicyVersion() string {
+	if x != nil {
+		return x.PolicyVersion
+	}
+	return ""
+}
+
+type ApplyBehaviorPolicyResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	EffectiveRuleCount int32                  `protobuf:"varint,1,opt,name=effective_rule_count,json=effectiveRuleCount,proto3" json:"effective_rule_count,omitempty"`
+	DisabledVendorIds  []string               `protobuf:"bytes,2,rep,name=disabled_vendor_ids,json=disabledVendorIds,proto3" json:"disabled_vendor_ids,omitempty"`
+	RulesetSha256      string                 `protobuf:"bytes,3,opt,name=ruleset_sha256,json=rulesetSha256,proto3" json:"ruleset_sha256,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ApplyBehaviorPolicyResponse) Reset() {
+	*x = ApplyBehaviorPolicyResponse{}
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyBehaviorPolicyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyBehaviorPolicyResponse) ProtoMessage() {}
+
+func (x *ApplyBehaviorPolicyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyBehaviorPolicyResponse.ProtoReflect.Descriptor instead.
+func (*ApplyBehaviorPolicyResponse) Descriptor() ([]byte, []int) {
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ApplyBehaviorPolicyResponse) GetEffectiveRuleCount() int32 {
+	if x != nil {
+		return x.EffectiveRuleCount
+	}
+	return 0
+}
+
+func (x *ApplyBehaviorPolicyResponse) GetDisabledVendorIds() []string {
+	if x != nil {
+		return x.DisabledVendorIds
+	}
+	return nil
+}
+
+func (x *ApplyBehaviorPolicyResponse) GetRulesetSha256() string {
+	if x != nil {
+		return x.RulesetSha256
+	}
+	return ""
+}
+
 // 任务命中详情查询请求
 type GetTaskHitsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -2274,7 +2300,7 @@ type GetTaskHitsRequest struct {
 
 func (x *GetTaskHitsRequest) Reset() {
 	*x = GetTaskHitsRequest{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[28]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2286,7 +2312,7 @@ func (x *GetTaskHitsRequest) String() string {
 func (*GetTaskHitsRequest) ProtoMessage() {}
 
 func (x *GetTaskHitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[28]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2299,7 +2325,7 @@ func (x *GetTaskHitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskHitsRequest.ProtoReflect.Descriptor instead.
 func (*GetTaskHitsRequest) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{28}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetTaskHitsRequest) GetUuid() string {
@@ -2360,7 +2386,7 @@ type HitEvent struct {
 
 func (x *HitEvent) Reset() {
 	*x = HitEvent{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[29]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2372,7 +2398,7 @@ func (x *HitEvent) String() string {
 func (*HitEvent) ProtoMessage() {}
 
 func (x *HitEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[29]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2385,7 +2411,7 @@ func (x *HitEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HitEvent.ProtoReflect.Descriptor instead.
 func (*HitEvent) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{29}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *HitEvent) GetEventID() string {
@@ -2548,7 +2574,7 @@ type GetTaskHitsResponse struct {
 
 func (x *GetTaskHitsResponse) Reset() {
 	*x = GetTaskHitsResponse{}
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[30]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2560,7 +2586,7 @@ func (x *GetTaskHitsResponse) String() string {
 func (*GetTaskHitsResponse) ProtoMessage() {}
 
 func (x *GetTaskHitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pb_zeek_runner_proto_msgTypes[30]
+	mi := &file_api_pb_zeek_runner_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2573,7 +2599,7 @@ func (x *GetTaskHitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskHitsResponse.ProtoReflect.Descriptor instead.
 func (*GetTaskHitsResponse) Descriptor() ([]byte, []int) {
-	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{30}
+	return file_api_pb_zeek_runner_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetTaskHitsResponse) GetUuid() string {
@@ -2648,32 +2674,16 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"scriptPath\x18\x04 \x01(\tR\n" +
 	"scriptPath\x12\x1c\n" +
 	"\toutputDir\x18\x05 \x01(\tR\toutputDir\x12\x1c\n" +
-	"\tstartTime\x18\x06 \x01(\tR\tstartTime\"\x14\n" +
-	"\x12HealthCheckRequest\"\xcf\x04\n" +
-	"\x13HealthCheckResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\x12!\n" +
+	"\tstartTime\x18\x06 \x01(\tR\tstartTime\"\x16\n" +
+	"\x14CapacityCheckRequest\"\xa1\x02\n" +
+	"\x15CapacityCheckResponse\x12%\n" +
+	"\x0eaccepting_jobs\x18\x01 \x01(\bR\racceptingJobs\x12!\n" +
 	"\fpool_running\x18\x02 \x01(\x05R\vpoolRunning\x12#\n" +
-	"\rpool_capacity\x18\x03 \x01(\x05R\fpoolCapacity\x12\x1f\n" +
-	"\vkafka_ready\x18\x04 \x01(\bR\n" +
-	"kafkaReady\x12\x1c\n" +
-	"\ttimestamp\x18\x05 \x01(\tR\ttimestamp\x12\x18\n" +
-	"\aversion\x18\x06 \x01(\tR\aversion\x12\x1d\n" +
-	"\n" +
-	"go_version\x18\a \x01(\tR\tgoVersion\x12\x0e\n" +
-	"\x02os\x18\b \x01(\tR\x02os\x12\x12\n" +
-	"\x04arch\x18\t \x01(\tR\x04arch\x12\x1f\n" +
-	"\vredis_ready\x18\n" +
-	" \x01(\bR\n" +
-	"redisReady\x12#\n" +
-	"\rqueue_pending\x18\v \x01(\x03R\fqueuePending\x12)\n" +
-	"\x10weighted_running\x18\f \x01(\x05R\x0fweightedRunning\x12+\n" +
-	"\x11weighted_capacity\x18\r \x01(\x05R\x10weightedCapacity\x12\x1b\n" +
-	"\tcpu_usage\x18\x0e \x01(\x01R\bcpuUsage\x12\x1b\n" +
-	"\tmem_usage\x18\x0f \x01(\x01R\bmemUsage\x12 \n" +
-	"\fdisk_io_busy\x18\x10 \x01(\x01R\n" +
-	"diskIoBusy\x12\x1b\n" +
-	"\tkafka_lag\x18\x11 \x01(\x03R\bkafkaLag\x12%\n" +
-	"\x0eaccepting_jobs\x18\x12 \x01(\bR\racceptingJobs\"3\n" +
+	"\rpool_capacity\x18\x03 \x01(\x05R\fpoolCapacity\x12)\n" +
+	"\x10weighted_running\x18\x04 \x01(\x05R\x0fweightedRunning\x12+\n" +
+	"\x11weighted_capacity\x18\x05 \x01(\x05R\x10weightedCapacity\x12#\n" +
+	"\rqueue_pending\x18\x06 \x01(\x03R\fqueuePending\x12\x1c\n" +
+	"\ttimestamp\x18\a \x01(\tR\ttimestamp\"3\n" +
 	"\x13VersionCheckRequest\x12\x1c\n" +
 	"\tcomponent\x18\x01 \x01(\tR\tcomponent\"N\n" +
 	"\x14VersionCheckResponse\x12\x1c\n" +
@@ -2842,7 +2852,14 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x12\x14\n" +
 	"\x05valid\x18\x02 \x01(\x05R\x05valid\x12\x18\n" +
 	"\ainvalid\x18\x03 \x01(\x05R\ainvalid\x121\n" +
-	"\ascripts\x18\x04 \x03(\v2\x17.zeek_runner.ScriptInfoR\ascripts\"v\n" +
+	"\ascripts\x18\x04 \x03(\v2\x17.zeek_runner.ScriptInfoR\ascripts\"s\n" +
+	"\x1aApplyBehaviorPolicyRequest\x12.\n" +
+	"\x13disabled_vendor_ids\x18\x01 \x03(\tR\x11disabledVendorIds\x12%\n" +
+	"\x0epolicy_version\x18\x02 \x01(\tR\rpolicyVersion\"\xa6\x01\n" +
+	"\x1bApplyBehaviorPolicyResponse\x120\n" +
+	"\x14effective_rule_count\x18\x01 \x01(\x05R\x12effectiveRuleCount\x12.\n" +
+	"\x13disabled_vendor_ids\x18\x02 \x03(\tR\x11disabledVendorIds\x12%\n" +
+	"\x0eruleset_sha256\x18\x03 \x01(\tR\rrulesetSha256\"v\n" +
 	"\x12GetTaskHitsRequest\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\x16\n" +
 	"\x06taskID\x18\x02 \x01(\tR\x06taskID\x12\x1e\n" +
@@ -2883,7 +2900,8 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\n" +
 	"totalCount\x18\x03 \x01(\x05R\n" +
 	"totalCount\x12)\n" +
-	"\x04hits\x18\x04 \x03(\v2\x15.zeek_runner.HitEventR\x04hits2\xc7\t\n" +
+	"\x04hits\x18\x04 \x03(\v2\x15.zeek_runner.HitEventR\x04hits2\xb9\n" +
+	"\n" +
 	"\x13ZeekAnalysisService\x12F\n" +
 	"\aAnalyze\x12\x1b.zeek_runner.AnalyzeRequest\x1a\x1c.zeek_runner.AnalyzeResponse\"\x00\x12U\n" +
 	"\fAsyncAnalyze\x12 .zeek_runner.AsyncAnalyzeRequest\x1a!.zeek_runner.AsyncAnalyzeResponse\"\x00\x12d\n" +
@@ -2891,13 +2909,14 @@ const file_api_pb_zeek_runner_proto_rawDesc = "" +
 	"\aExtract\x12\x1b.zeek_runner.ExtractRequest\x1a\x1c.zeek_runner.ExtractResponse\"\x00\x12U\n" +
 	"\fExtractAsync\x12 .zeek_runner.ExtractAsyncRequest\x1a!.zeek_runner.ExtractAsyncResponse\"\x00\x12R\n" +
 	"\rGetTaskStatus\x12\x1e.zeek_runner.TaskStatusRequest\x1a\x1f.zeek_runner.TaskStatusResponse\"\x00\x12d\n" +
-	"\x13GetParentTaskStatus\x12$.zeek_runner.ParentTaskStatusRequest\x1a%.zeek_runner.ParentTaskStatusResponse\"\x00\x12R\n" +
-	"\vHealthCheck\x12\x1f.zeek_runner.HealthCheckRequest\x1a .zeek_runner.HealthCheckResponse\"\x00\x12U\n" +
+	"\x13GetParentTaskStatus\x12$.zeek_runner.ParentTaskStatusRequest\x1a%.zeek_runner.ParentTaskStatusResponse\"\x00\x12X\n" +
+	"\rCapacityCheck\x12!.zeek_runner.CapacityCheckRequest\x1a\".zeek_runner.CapacityCheckResponse\"\x00\x12U\n" +
 	"\fVersionCheck\x12 .zeek_runner.VersionCheckRequest\x1a!.zeek_runner.VersionCheckResponse\"\x00\x12^\n" +
 	"\x0fZeekSyntaxCheck\x12#.zeek_runner.ZeekSyntaxCheckRequest\x1a$.zeek_runner.ZeekSyntaxCheckResponse\"\x00\x12R\n" +
 	"\vListScripts\x12\x1f.zeek_runner.ListScriptsRequest\x1a .zeek_runner.ListScriptsResponse\"\x00\x12E\n" +
 	"\tGetScript\x12\x1d.zeek_runner.GetScriptRequest\x1a\x17.zeek_runner.ScriptInfo\"\x00\x12X\n" +
-	"\rReloadScripts\x12!.zeek_runner.ReloadScriptsRequest\x1a\".zeek_runner.ReloadScriptsResponse\"\x00\x12R\n" +
+	"\rReloadScripts\x12!.zeek_runner.ReloadScriptsRequest\x1a\".zeek_runner.ReloadScriptsResponse\"\x00\x12j\n" +
+	"\x13ApplyBehaviorPolicy\x12'.zeek_runner.ApplyBehaviorPolicyRequest\x1a(.zeek_runner.ApplyBehaviorPolicyResponse\"\x00\x12R\n" +
 	"\vGetTaskHits\x12\x1f.zeek_runner.GetTaskHitsRequest\x1a .zeek_runner.GetTaskHitsResponse\"\x00B\x14Z\x12zeek_runner/api/pbb\x06proto3"
 
 var (
@@ -2912,46 +2931,48 @@ func file_api_pb_zeek_runner_proto_rawDescGZIP() []byte {
 	return file_api_pb_zeek_runner_proto_rawDescData
 }
 
-var file_api_pb_zeek_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_api_pb_zeek_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_api_pb_zeek_runner_proto_goTypes = []any{
-	(*AnalyzeRequest)(nil),            // 0: zeek_runner.AnalyzeRequest
-	(*AnalyzeResponse)(nil),           // 1: zeek_runner.AnalyzeResponse
-	(*ExtractRequest)(nil),            // 2: zeek_runner.ExtractRequest
-	(*ExtractResponse)(nil),           // 3: zeek_runner.ExtractResponse
-	(*HealthCheckRequest)(nil),        // 4: zeek_runner.HealthCheckRequest
-	(*HealthCheckResponse)(nil),       // 5: zeek_runner.HealthCheckResponse
-	(*VersionCheckRequest)(nil),       // 6: zeek_runner.VersionCheckRequest
-	(*VersionCheckResponse)(nil),      // 7: zeek_runner.VersionCheckResponse
-	(*ZeekSyntaxCheckRequest)(nil),    // 8: zeek_runner.ZeekSyntaxCheckRequest
-	(*ZeekSyntaxCheckResponse)(nil),   // 9: zeek_runner.ZeekSyntaxCheckResponse
-	(*AsyncAnalyzeRequest)(nil),       // 10: zeek_runner.AsyncAnalyzeRequest
-	(*AsyncAnalyzeResponse)(nil),      // 11: zeek_runner.AsyncAnalyzeResponse
-	(*ScriptTask)(nil),                // 12: zeek_runner.ScriptTask
-	(*AsyncAnalyzeBatchRequest)(nil),  // 13: zeek_runner.AsyncAnalyzeBatchRequest
-	(*AsyncAnalyzeBatchResponse)(nil), // 14: zeek_runner.AsyncAnalyzeBatchResponse
-	(*ExtractAsyncRequest)(nil),       // 15: zeek_runner.ExtractAsyncRequest
-	(*ExtractAsyncResponse)(nil),      // 16: zeek_runner.ExtractAsyncResponse
-	(*TaskStatusRequest)(nil),         // 17: zeek_runner.TaskStatusRequest
-	(*TaskStatusResponse)(nil),        // 18: zeek_runner.TaskStatusResponse
-	(*ParentTaskStatusRequest)(nil),   // 19: zeek_runner.ParentTaskStatusRequest
-	(*SubTaskSummary)(nil),            // 20: zeek_runner.SubTaskSummary
-	(*ParentTaskStatusResponse)(nil),  // 21: zeek_runner.ParentTaskStatusResponse
-	(*ListScriptsRequest)(nil),        // 22: zeek_runner.ListScriptsRequest
-	(*ScriptInfo)(nil),                // 23: zeek_runner.ScriptInfo
-	(*ListScriptsResponse)(nil),       // 24: zeek_runner.ListScriptsResponse
-	(*GetScriptRequest)(nil),          // 25: zeek_runner.GetScriptRequest
-	(*ReloadScriptsRequest)(nil),      // 26: zeek_runner.ReloadScriptsRequest
-	(*ReloadScriptsResponse)(nil),     // 27: zeek_runner.ReloadScriptsResponse
-	(*GetTaskHitsRequest)(nil),        // 28: zeek_runner.GetTaskHitsRequest
-	(*HitEvent)(nil),                  // 29: zeek_runner.HitEvent
-	(*GetTaskHitsResponse)(nil),       // 30: zeek_runner.GetTaskHitsResponse
+	(*AnalyzeRequest)(nil),              // 0: zeek_runner.AnalyzeRequest
+	(*AnalyzeResponse)(nil),             // 1: zeek_runner.AnalyzeResponse
+	(*ExtractRequest)(nil),              // 2: zeek_runner.ExtractRequest
+	(*ExtractResponse)(nil),             // 3: zeek_runner.ExtractResponse
+	(*CapacityCheckRequest)(nil),        // 4: zeek_runner.CapacityCheckRequest
+	(*CapacityCheckResponse)(nil),       // 5: zeek_runner.CapacityCheckResponse
+	(*VersionCheckRequest)(nil),         // 6: zeek_runner.VersionCheckRequest
+	(*VersionCheckResponse)(nil),        // 7: zeek_runner.VersionCheckResponse
+	(*ZeekSyntaxCheckRequest)(nil),      // 8: zeek_runner.ZeekSyntaxCheckRequest
+	(*ZeekSyntaxCheckResponse)(nil),     // 9: zeek_runner.ZeekSyntaxCheckResponse
+	(*AsyncAnalyzeRequest)(nil),         // 10: zeek_runner.AsyncAnalyzeRequest
+	(*AsyncAnalyzeResponse)(nil),        // 11: zeek_runner.AsyncAnalyzeResponse
+	(*ScriptTask)(nil),                  // 12: zeek_runner.ScriptTask
+	(*AsyncAnalyzeBatchRequest)(nil),    // 13: zeek_runner.AsyncAnalyzeBatchRequest
+	(*AsyncAnalyzeBatchResponse)(nil),   // 14: zeek_runner.AsyncAnalyzeBatchResponse
+	(*ExtractAsyncRequest)(nil),         // 15: zeek_runner.ExtractAsyncRequest
+	(*ExtractAsyncResponse)(nil),        // 16: zeek_runner.ExtractAsyncResponse
+	(*TaskStatusRequest)(nil),           // 17: zeek_runner.TaskStatusRequest
+	(*TaskStatusResponse)(nil),          // 18: zeek_runner.TaskStatusResponse
+	(*ParentTaskStatusRequest)(nil),     // 19: zeek_runner.ParentTaskStatusRequest
+	(*SubTaskSummary)(nil),              // 20: zeek_runner.SubTaskSummary
+	(*ParentTaskStatusResponse)(nil),    // 21: zeek_runner.ParentTaskStatusResponse
+	(*ListScriptsRequest)(nil),          // 22: zeek_runner.ListScriptsRequest
+	(*ScriptInfo)(nil),                  // 23: zeek_runner.ScriptInfo
+	(*ListScriptsResponse)(nil),         // 24: zeek_runner.ListScriptsResponse
+	(*GetScriptRequest)(nil),            // 25: zeek_runner.GetScriptRequest
+	(*ReloadScriptsRequest)(nil),        // 26: zeek_runner.ReloadScriptsRequest
+	(*ReloadScriptsResponse)(nil),       // 27: zeek_runner.ReloadScriptsResponse
+	(*ApplyBehaviorPolicyRequest)(nil),  // 28: zeek_runner.ApplyBehaviorPolicyRequest
+	(*ApplyBehaviorPolicyResponse)(nil), // 29: zeek_runner.ApplyBehaviorPolicyResponse
+	(*GetTaskHitsRequest)(nil),          // 30: zeek_runner.GetTaskHitsRequest
+	(*HitEvent)(nil),                    // 31: zeek_runner.HitEvent
+	(*GetTaskHitsResponse)(nil),         // 32: zeek_runner.GetTaskHitsResponse
 }
 var file_api_pb_zeek_runner_proto_depIdxs = []int32{
 	12, // 0: zeek_runner.AsyncAnalyzeBatchRequest.scripts:type_name -> zeek_runner.ScriptTask
 	20, // 1: zeek_runner.ParentTaskStatusResponse.subTasks:type_name -> zeek_runner.SubTaskSummary
 	23, // 2: zeek_runner.ListScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
 	23, // 3: zeek_runner.ReloadScriptsResponse.scripts:type_name -> zeek_runner.ScriptInfo
-	29, // 4: zeek_runner.GetTaskHitsResponse.hits:type_name -> zeek_runner.HitEvent
+	31, // 4: zeek_runner.GetTaskHitsResponse.hits:type_name -> zeek_runner.HitEvent
 	0,  // 5: zeek_runner.ZeekAnalysisService.Analyze:input_type -> zeek_runner.AnalyzeRequest
 	10, // 6: zeek_runner.ZeekAnalysisService.AsyncAnalyze:input_type -> zeek_runner.AsyncAnalyzeRequest
 	13, // 7: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:input_type -> zeek_runner.AsyncAnalyzeBatchRequest
@@ -2959,29 +2980,31 @@ var file_api_pb_zeek_runner_proto_depIdxs = []int32{
 	15, // 9: zeek_runner.ZeekAnalysisService.ExtractAsync:input_type -> zeek_runner.ExtractAsyncRequest
 	17, // 10: zeek_runner.ZeekAnalysisService.GetTaskStatus:input_type -> zeek_runner.TaskStatusRequest
 	19, // 11: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:input_type -> zeek_runner.ParentTaskStatusRequest
-	4,  // 12: zeek_runner.ZeekAnalysisService.HealthCheck:input_type -> zeek_runner.HealthCheckRequest
+	4,  // 12: zeek_runner.ZeekAnalysisService.CapacityCheck:input_type -> zeek_runner.CapacityCheckRequest
 	6,  // 13: zeek_runner.ZeekAnalysisService.VersionCheck:input_type -> zeek_runner.VersionCheckRequest
 	8,  // 14: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:input_type -> zeek_runner.ZeekSyntaxCheckRequest
 	22, // 15: zeek_runner.ZeekAnalysisService.ListScripts:input_type -> zeek_runner.ListScriptsRequest
 	25, // 16: zeek_runner.ZeekAnalysisService.GetScript:input_type -> zeek_runner.GetScriptRequest
 	26, // 17: zeek_runner.ZeekAnalysisService.ReloadScripts:input_type -> zeek_runner.ReloadScriptsRequest
-	28, // 18: zeek_runner.ZeekAnalysisService.GetTaskHits:input_type -> zeek_runner.GetTaskHitsRequest
-	1,  // 19: zeek_runner.ZeekAnalysisService.Analyze:output_type -> zeek_runner.AnalyzeResponse
-	11, // 20: zeek_runner.ZeekAnalysisService.AsyncAnalyze:output_type -> zeek_runner.AsyncAnalyzeResponse
-	14, // 21: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:output_type -> zeek_runner.AsyncAnalyzeBatchResponse
-	3,  // 22: zeek_runner.ZeekAnalysisService.Extract:output_type -> zeek_runner.ExtractResponse
-	16, // 23: zeek_runner.ZeekAnalysisService.ExtractAsync:output_type -> zeek_runner.ExtractAsyncResponse
-	18, // 24: zeek_runner.ZeekAnalysisService.GetTaskStatus:output_type -> zeek_runner.TaskStatusResponse
-	21, // 25: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:output_type -> zeek_runner.ParentTaskStatusResponse
-	5,  // 26: zeek_runner.ZeekAnalysisService.HealthCheck:output_type -> zeek_runner.HealthCheckResponse
-	7,  // 27: zeek_runner.ZeekAnalysisService.VersionCheck:output_type -> zeek_runner.VersionCheckResponse
-	9,  // 28: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:output_type -> zeek_runner.ZeekSyntaxCheckResponse
-	24, // 29: zeek_runner.ZeekAnalysisService.ListScripts:output_type -> zeek_runner.ListScriptsResponse
-	23, // 30: zeek_runner.ZeekAnalysisService.GetScript:output_type -> zeek_runner.ScriptInfo
-	27, // 31: zeek_runner.ZeekAnalysisService.ReloadScripts:output_type -> zeek_runner.ReloadScriptsResponse
-	30, // 32: zeek_runner.ZeekAnalysisService.GetTaskHits:output_type -> zeek_runner.GetTaskHitsResponse
-	19, // [19:33] is the sub-list for method output_type
-	5,  // [5:19] is the sub-list for method input_type
+	28, // 18: zeek_runner.ZeekAnalysisService.ApplyBehaviorPolicy:input_type -> zeek_runner.ApplyBehaviorPolicyRequest
+	30, // 19: zeek_runner.ZeekAnalysisService.GetTaskHits:input_type -> zeek_runner.GetTaskHitsRequest
+	1,  // 20: zeek_runner.ZeekAnalysisService.Analyze:output_type -> zeek_runner.AnalyzeResponse
+	11, // 21: zeek_runner.ZeekAnalysisService.AsyncAnalyze:output_type -> zeek_runner.AsyncAnalyzeResponse
+	14, // 22: zeek_runner.ZeekAnalysisService.AsyncAnalyzeBatch:output_type -> zeek_runner.AsyncAnalyzeBatchResponse
+	3,  // 23: zeek_runner.ZeekAnalysisService.Extract:output_type -> zeek_runner.ExtractResponse
+	16, // 24: zeek_runner.ZeekAnalysisService.ExtractAsync:output_type -> zeek_runner.ExtractAsyncResponse
+	18, // 25: zeek_runner.ZeekAnalysisService.GetTaskStatus:output_type -> zeek_runner.TaskStatusResponse
+	21, // 26: zeek_runner.ZeekAnalysisService.GetParentTaskStatus:output_type -> zeek_runner.ParentTaskStatusResponse
+	5,  // 27: zeek_runner.ZeekAnalysisService.CapacityCheck:output_type -> zeek_runner.CapacityCheckResponse
+	7,  // 28: zeek_runner.ZeekAnalysisService.VersionCheck:output_type -> zeek_runner.VersionCheckResponse
+	9,  // 29: zeek_runner.ZeekAnalysisService.ZeekSyntaxCheck:output_type -> zeek_runner.ZeekSyntaxCheckResponse
+	24, // 30: zeek_runner.ZeekAnalysisService.ListScripts:output_type -> zeek_runner.ListScriptsResponse
+	23, // 31: zeek_runner.ZeekAnalysisService.GetScript:output_type -> zeek_runner.ScriptInfo
+	27, // 32: zeek_runner.ZeekAnalysisService.ReloadScripts:output_type -> zeek_runner.ReloadScriptsResponse
+	29, // 33: zeek_runner.ZeekAnalysisService.ApplyBehaviorPolicy:output_type -> zeek_runner.ApplyBehaviorPolicyResponse
+	32, // 34: zeek_runner.ZeekAnalysisService.GetTaskHits:output_type -> zeek_runner.GetTaskHitsResponse
+	20, // [20:35] is the sub-list for method output_type
+	5,  // [5:20] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -2998,7 +3021,7 @@ func file_api_pb_zeek_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_pb_zeek_runner_proto_rawDesc), len(file_api_pb_zeek_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   31,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

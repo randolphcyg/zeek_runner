@@ -360,6 +360,8 @@ python3 scripts/test/generate_offline_test_pcaps.py
 | Bulk download | `detect_bulk_download.zeek` | `bulk_download_test.pcap` | `Bulk_Download_Detected` | Counts repeated archive/binary downloads. |
 | DNS Flood / ANY | `detect_dns_flood.zeek` | `dns_flood_test.pcap` | `DNS_Query_Flood`, `DNS_Amplification_ANY` | Thresholds are `FLOOD_THRESHOLD`, `ANY_THRESHOLD`, `CHECK_INTERVAL`. |
 | File tampering | `detect_file_tampering.zeek` | `file_tampering_test.pcap` | `File_Tampering_Detected` | Flags critical path access and suspicious file paths. |
+| Firmware download hijack | `detect_firmware_download_hijack.zeek` | `firmware_download_hijack_test.pcap` | `Firmware_Replacement_Suspected`, `Firmware_Redirect_Hijack` | Flags insecure firmware download, suspicious source, redirect hijack, and changed response traits for the same firmware URL. |
+| Firmware upgrade hijack | `detect_firmware_upgrade_hijack.zeek` | `firmware_upgrade_hijack_test.pcap` | `Firmware_Manifest_Hijack`, `Firmware_Rollback_Suspected` | Flags OTA/upgrade endpoint access, insecure manifest URLs, missing signature/hash, rollback, and firmware upload. |
 | HTTP brute force | `detect_http_brute_force.zeek` | `http_bruteforce_test.pcap` | `HTTP_Brute_Force_Detected` | Counts login requests that receive 401/403 responses. |
 | HTTP command injection | `detect_http_cmd_injection.zeek` | `http_cmd_injection_test.pcap` | command injection notice | Checks request URI payloads. |
 | HTTP flood | `detect_http_flood.zeek` | `http_flood_test.pcap` | `HTTP_Flood_Detected` | Request threshold is `&redef`. |

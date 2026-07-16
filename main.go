@@ -26,6 +26,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 标准 grpc.health.v1.Health 服务：分离存活（service=""）与就绪（service=ZeekAnalysisService）。
+	healthServer := NewHealthServer()
+	app.HealthServer = healthServer
+
 	instanceID := GetInstanceIDFromTaskManager(app.TaskManager)
 	InitLogger(instanceID)
 
@@ -115,6 +119,13 @@ func main() {
 		if app.Config.GRPC.EnableReflection {
 			reflection.Register(grpcSrv)
 		}
+		// 将现有 grpc.enableHealthCheck 配置真正用于标准 Health 服务注册，默认保持开启。
+		if app.Config.GRPC.EnableHealthCheck {
+			healthServer.Register(grpcSrv)
+		}
+		// 进程启动完成，存活检查置为 SERVING；就绪状态由 readinessProbeLoop 周期刷新。
+		healthServer.SetLiveness(true)
+		healthServer.SetReadiness(app.IsRedisReady() && (!app.Config.Behavior.Required || app.IsBehaviorReady()))
 		slog.Info("gRPC started", "addr", fmt.Sprintf("%s:%d", app.Config.GRPC.Host, app.Config.GRPC.Port))
 		if err := grpcSrv.Serve(lis); err != nil {
 			slog.Error("gRPC error", "err", err)
@@ -136,6 +147,8 @@ func main() {
 			slog.Error("HTTP shutdown error", "err", err)
 		}
 		slog.Info("Stopping gRPC server...")
+		// 优雅退出前置所有 Health 状态为 NOT_SERVING，使下游负载均衡器摘除流量。
+		healthServer.Shutdown()
 		grpcSrv.GracefulStop()
 		slog.Info("Stopping background tasks...")
 		cancel()

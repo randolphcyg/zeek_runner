@@ -193,7 +193,7 @@ func loggingMiddleware() gin.HandlerFunc {
 				"request_id", c.GetString("requestID"),
 			)
 		} else {
-			slog.Info("HTTP request",
+			slog.Debug("HTTP request",
 				"method", c.Request.Method,
 				"path", path,
 				"status", statusCode,

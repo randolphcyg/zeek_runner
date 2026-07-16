@@ -46,7 +46,7 @@ func grpcLoggingInterceptor() grpc.UnaryServerInterceptor {
 				"err", err,
 			)
 		} else {
-			slog.Info("gRPC request",
+			slog.Debug("gRPC request",
 				"method", info.FullMethod,
 				"code", code.String(),
 				"latency", latency,

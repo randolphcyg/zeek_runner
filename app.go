@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -10,20 +11,25 @@ import (
 )
 
 type App struct {
-	ConfigManager *ConfigManager
-	Config        *Config
-	TaskPool      *ants.Pool
-	RateLimiter   *RateLimiter
-	KafkaChecker  *KafkaChecker
-	TaskManager   *TaskManager
-	FileDedupMgr  *FileDedupManager
-	Service       *Service
+	ConfigManager  *ConfigManager
+	Config         *Config
+	TaskPool       *ants.Pool
+	RateLimiter    *RateLimiter
+	KafkaChecker   *KafkaChecker
+	TaskManager    *TaskManager
+	FileDedupMgr   *FileDedupManager
+	Service        *Service
+	HealthServer   *HealthServer
+	BehaviorEngine *behaviorEngine
 
 	kafkaReady    bool
 	kafkaReadyMux sync.RWMutex
 
 	redisReady    bool
 	redisReadyMux sync.RWMutex
+
+	behaviorReady    bool
+	behaviorReadyMux sync.RWMutex
 
 	appCtx                 context.Context
 	scriptAutoReloadCancel context.CancelFunc
@@ -71,6 +77,29 @@ func NewApp() (*App, error) {
 		slog.Warn("KAFKA_BROKERS not set")
 	}
 
+	// 初始化行为识别引擎：规则加载失败必须拒绝就绪，不可静默使用空规则。
+	if cfg.Behavior.RulesPath != "" {
+		eng, err := newBehaviorEngine(behaviorEngineConfig{
+			RulesPath:        cfg.Behavior.RulesPath,
+			ArchiveDir:       cfg.Behavior.ArchiveDir,
+			ArchiveKeyHex:    cfg.Behavior.ArchiveKeyHex,
+			ArchiveEnabled:   cfg.Behavior.ArchiveEnabled,
+			ArchiveRetention: cfg.Behavior.ArchiveRetention,
+		})
+		if err != nil {
+			slog.Error("behavior engine init failed: refusing to start with empty rules", "err", err)
+			return nil, fmt.Errorf("behavior engine init: %w", err)
+		}
+		app.BehaviorEngine = eng
+		app.behaviorReady = true
+		app.Service.SetBehaviorEngine(eng)
+	} else {
+		if cfg.Behavior.Required {
+			return nil, fmt.Errorf("BEHAVIOR_RULES_PATH is required for production behavior detection")
+		}
+		slog.Warn("BEHAVIOR_RULES_PATH not set, behavior analysis disabled by explicit non-production configuration")
+	}
+
 	cleanOldTempFiles()
 
 	cm.WatchSignals(app.ReloadConfig)
@@ -94,6 +123,12 @@ func (a *App) IsRedisReady() bool {
 	a.redisReadyMux.RLock()
 	defer a.redisReadyMux.RUnlock()
 	return a.redisReady
+}
+
+func (a *App) IsBehaviorReady() bool {
+	a.behaviorReadyMux.RLock()
+	defer a.behaviorReadyMux.RUnlock()
+	return a.behaviorReady && a.BehaviorEngine != nil
 }
 
 func (a *App) SetRedisReady(status bool) {
@@ -146,6 +181,84 @@ func (a *App) Start(ctx context.Context) {
 	if a.Config.Redis.Addr != "" && !a.IsRedisReady() {
 		go a.redisReconnectLoop(ctx)
 	}
+
+	// 命中载荷归档过期清理：定时删除过期对象；删除失败保留审计记录并可重试。
+	if a.BehaviorEngine != nil && a.BehaviorEngine.archiver != nil {
+		go a.archiveCleanupLoop(ctx)
+	}
+
+	// 就绪探测：周期性 ping Redis 并更新标准 Health 服务的就绪状态。
+	// 覆盖启动期 Redis 未就绪、运行期 Redis 临时失联两种场景。
+	if a.HealthServer != nil {
+		go a.readinessProbeLoop(ctx)
+	}
+}
+
+// archiveCleanupLoop 定时删除过期的归档对象。每天执行一次。
+// 删除失败保留审计记录并可重试。
+func (a *App) archiveCleanupLoop(ctx context.Context) {
+	if a.BehaviorEngine == nil || a.BehaviorEngine.archiver == nil {
+		return
+	}
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// 启动后先执行一次
+	a.runArchiveCleanup()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.runArchiveCleanup()
+		}
+	}
+}
+
+func (a *App) runArchiveCleanup() {
+	deleted, err := a.BehaviorEngine.archiver.cleanupExpiredArchives()
+	if err != nil {
+		slog.Warn("archive cleanup completed with errors", "deleted", deleted, "err", err)
+	} else if deleted > 0 {
+		slog.Info("archive cleanup completed", "deleted", deleted)
+	}
+}
+
+// readinessProbeLoop 周期性检查 Redis/TaskManager 连通性并刷新就绪状态。
+// TaskManager 为 nil（尚未重连成功）时保持 NOT_SERVING；ping 失败时置为 NOT_SERVING。
+func (a *App) readinessProbeLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	a.refreshReadiness(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.refreshReadiness(ctx)
+		}
+	}
+}
+
+func (a *App) refreshReadiness(ctx context.Context) {
+	if a.HealthServer == nil {
+		return
+	}
+	if a.TaskManager == nil {
+		a.HealthServer.SetReadiness(false)
+		return
+	}
+	if err := a.TaskManager.HealthCheck(ctx); err != nil {
+		a.HealthServer.SetReadiness(false)
+		return
+	}
+	if a.Config.Behavior.Required && !a.IsBehaviorReady() {
+		a.HealthServer.SetReadiness(false)
+		return
+	}
+	a.HealthServer.SetReadiness(true)
 }
 
 func (a *App) Shutdown(ctx context.Context) error {

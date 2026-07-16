@@ -34,6 +34,9 @@ export {
     ## 过滤掉常见的网页图片/JS/CSS，只关注有"批量下载"风险的数据类型。
     ## 如果想统计所有类型文件，可以将这个 set 清空。
     const watch_mime_types: set[string] = {
+        "application/octet-stream",
+        "application/x-firmware",
+        "application/x-binary",
         "application/pdf",
         "application/zip",
         "application/x-dosexec",

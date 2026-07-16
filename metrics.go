@@ -38,6 +38,33 @@ var (
 		},
 		[]string{"method", "code"},
 	)
+
+	behaviorDetectionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "zeek_behavior_detections_total",
+			Help: "Behavior detection results emitted by the runner",
+		},
+		[]string{"stage", "coverage", "candidate"},
+	)
+	behaviorPartialPayloadsTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "zeek_behavior_partial_payloads_total",
+			Help: "Behavior analyses marked partial due to decode or TCP reassembly limits",
+		},
+	)
+	behaviorArchivesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "zeek_behavior_archives_total",
+			Help: "Behavior payload archive outcomes",
+		},
+		[]string{"status"},
+	)
+	behaviorUnmatchedTransactionsTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "zeek_behavior_unmatched_transactions_total",
+			Help: "HTTP URL events not attached because the transaction was ambiguous or missing",
+		},
+	)
 )
 
 func init() {
@@ -45,6 +72,36 @@ func init() {
 	prometheus.MustRegister(taskDuration)
 	prometheus.MustRegister(requestsTotal)
 	prometheus.MustRegister(grpcRequestsTotal)
+	prometheus.MustRegister(behaviorDetectionsTotal)
+	prometheus.MustRegister(behaviorPartialPayloadsTotal)
+	prometheus.MustRegister(behaviorArchivesTotal)
+	prometheus.MustRegister(behaviorUnmatchedTransactionsTotal)
+}
+
+func RecordBehaviorBlock(block behaviorBlock) {
+	stage := block.BehaviorStage
+	if stage == "" {
+		stage = "unknown"
+	}
+	coverage := block.CoverageLevel
+	if coverage == "" {
+		coverage = "unknown"
+	}
+	candidate := "false"
+	if block.IsCandidate {
+		candidate = "true"
+	}
+	behaviorDetectionsTotal.WithLabelValues(stage, coverage, candidate).Inc()
+	if block.PayloadAnalysisMode == partialPayloadMode {
+		behaviorPartialPayloadsTotal.Inc()
+	}
+	if block.ArchiveStatus != "" {
+		behaviorArchivesTotal.WithLabelValues(block.ArchiveStatus).Inc()
+	}
+}
+
+func RecordBehaviorUnmatchedTransaction() {
+	behaviorUnmatchedTransactionsTotal.Inc()
 }
 
 func RecordTask(status string, durationSeconds float64) {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "zeek_runner/api/pb"
+	"zeek_runner/internal/upgradebehavior"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,6 +21,29 @@ func TestGRPCServer_VersionCheck_InvalidComponent(t *testing.T) {
 
 	if err == nil {
 		t.Error("expected error for invalid component")
+	}
+}
+
+func TestGRPCServer_ApplyBehaviorPolicy(t *testing.T) {
+	rules, err := upgradebehavior.CompileRuntimeRuleSet("test", []upgradebehavior.BehaviorRule{{
+		RuleID: "GLOBAL", RuleVersion: "1", URLType: upgradebehavior.URLTypeFirmwareDownload,
+		BehaviorStage: upgradebehavior.StageDownload, ArtifactKind: upgradebehavior.ArtifactFirmware, ScoreThreshold: 10,
+		HardConditions: []upgradebehavior.HardCondition{{Dimension: upgradebehavior.DimSource, Operator: upgradebehavior.OpEquals, Values: []string{"http_download"}}},
+		Signals:        []upgradebehavior.ScoreSignal{{Dimension: upgradebehavior.DimExtension, Operator: upgradebehavior.OpSuffix, Values: []string{".bin"}, Score: 10, Required: true}},
+	}, {
+		RuleID: "V-TEST", RuleVersion: "1", VendorID: "V-TEST", CoverageLevel: upgradebehavior.CoverageL1,
+		URLType: upgradebehavior.URLTypeUpgradeCheck, BehaviorStage: upgradebehavior.StageCheck, ArtifactKind: upgradebehavior.ArtifactManifest, ScoreThreshold: 10,
+		HardConditions: []upgradebehavior.HardCondition{{Dimension: upgradebehavior.DimSource, Operator: upgradebehavior.OpEquals, Values: []string{"http_request"}}},
+		Signals:        []upgradebehavior.ScoreSignal{{Dimension: upgradebehavior.DimHost, Operator: upgradebehavior.OpSuffix, Values: []string{"test.example"}, Score: 10, Required: true}},
+	}}, map[string]string{"test.example": "V-TEST"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := &behaviorEngine{matcher: upgradebehavior.NewRuntimeBehaviorMatcher(rules), ruleSet: rules, rulesetSHA: "sha", disabledVendors: make(map[string]struct{})}
+	server := NewGRPCServer(nil, &App{BehaviorEngine: eng})
+	resp, err := server.ApplyBehaviorPolicy(context.Background(), &pb.ApplyBehaviorPolicyRequest{DisabledVendorIds: []string{"V-TEST"}})
+	if err != nil || resp.GetEffectiveRuleCount() != 1 || len(resp.GetDisabledVendorIds()) != 1 {
+		t.Fatalf("ApplyBehaviorPolicy = %#v / %v", resp, err)
 	}
 }
 

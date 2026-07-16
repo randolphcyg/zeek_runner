@@ -13,3 +13,4 @@ otel-config.yaml
 docker-compose.local.yaml
 docker-compose.local.yml
 docker-compose.dev.yml
+vendor/

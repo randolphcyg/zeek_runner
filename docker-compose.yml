@@ -11,7 +11,7 @@ x-logging-infra: &logging-infra
     max-file: "3"
 
 x-zeek-runner-common: &zeek-runner-common
-  image: zeek_runner:5.0
+  image: zeek_runner:5.1
   restart: unless-stopped
   depends_on:
     redis:
@@ -23,6 +23,7 @@ x-zeek-runner-common: &zeek-runner-common
     - ./extracted:/opt/zeek_runner/extracted
     - ./custom:/usr/local/zeek/share/zeek/base/custom:ro
     - ./config.local.yaml:/opt/zeek_runner/config.yaml:ro
+    - ./rules:/opt/zeek_runner/rules:ro
   logging: *logging-default
   healthcheck:
     test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:8000/api/v1/healthz"]

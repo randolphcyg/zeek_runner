@@ -74,3 +74,32 @@ func TestZeekRunOptions_ConfigPath(t *testing.T) {
 		})
 	}
 }
+
+func TestParentStatusFromTasksRepairsStaleRunningAggregate(t *testing.T) {
+	status := parentStatusFromTasks("task-1", []*Task{
+		{
+			TaskID:      "task-1",
+			UUID:        "uuid-success",
+			PcapID:      "pcap-1",
+			PcapPath:    "/tmp/a.pcap",
+			Status:      TaskStatusSuccess,
+			HitCount:    2,
+			NoticeCount: 1,
+		},
+		{
+			TaskID: "task-1",
+			UUID:   "uuid-timeout",
+			Status: TaskStatusTimeout,
+		},
+	})
+
+	if status.Status != "partial_failed" {
+		t.Fatalf("Status = %s, want partial_failed", status.Status)
+	}
+	if status.TotalCount != 2 || status.SuccessCount != 1 || status.TimeoutCount != 1 || status.PendingCount != 0 || status.RunningCount != 0 {
+		t.Fatalf("unexpected counts: %+v", status)
+	}
+	if status.HitCount != 2 || status.NoticeCount != 1 {
+		t.Fatalf("unexpected hit stats: %+v", status)
+	}
+}

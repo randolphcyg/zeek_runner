@@ -44,29 +44,21 @@ message ExtractResponse {
   string startTime = 6;        // 任务开始时间
 }
 
-// 健康检查请求
-message HealthCheckRequest {}
+// 容量检查请求
+message CapacityCheckRequest {}
 
-// 健康检查响应
-message HealthCheckResponse {
-  string status = 1;
-  int32 pool_running = 2;
-  int32 pool_capacity = 3;
-  bool kafka_ready = 4;
-  string timestamp = 5;
-  string version = 6;
-  string go_version = 7;
-  string os = 8;
-  string arch = 9;
-  bool redis_ready = 10;
-  int64 queue_pending = 11;
-  int32 weighted_running = 12;
-  int32 weighted_capacity = 13;
-  double cpu_usage = 14;
-  double mem_usage = 15;
-  double disk_io_busy = 16;
-  int64 kafka_lag = 17;
-  bool accepting_jobs = 18;
+// 容量检查响应：仅暴露真实可用于背压的字段
+message CapacityCheckResponse {
+  bool accepting_jobs = 1;       // 是否仍在接收任务
+
+  int32 pool_running = 2;        // ants worker pool 实际运行量
+  int32 pool_capacity = 3;       // ants worker pool 容量
+
+  int32 weighted_running = 4;    // 当前异步 batch 已占用的本地资源权重
+  int32 weighted_capacity = 5;   // 本地权重上限
+
+  int64 queue_pending = 6;       // Redis Stream 中未领取的真实等待量 (XLEN - XPENDING)
+  string timestamp = 7;
 }
 
 // 版本检查请求
@@ -252,6 +244,19 @@ message ReloadScriptsResponse {
   repeated ScriptInfo scripts = 4;
 }
 
+// 行为规则策略由外部控制面下发。规则 YAML 的内容与 SHA 不变，
+// 仅按厂商配置状态过滤运行时行为规则。
+message ApplyBehaviorPolicyRequest {
+  repeated string disabled_vendor_ids = 1;
+  string policy_version = 2;
+}
+
+message ApplyBehaviorPolicyResponse {
+  int32 effective_rule_count = 1;
+  repeated string disabled_vendor_ids = 2;
+  string ruleset_sha256 = 3;
+}
+
 // 任务命中详情查询请求
 message GetTaskHitsRequest {
   string uuid = 1;             // 子任务UUID
@@ -302,11 +307,12 @@ service ZeekAnalysisService {
   rpc ExtractAsync(ExtractAsyncRequest) returns (ExtractAsyncResponse) {}
   rpc GetTaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
   rpc GetParentTaskStatus(ParentTaskStatusRequest) returns (ParentTaskStatusResponse) {}
-  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
+  rpc CapacityCheck(CapacityCheckRequest) returns (CapacityCheckResponse) {}
   rpc VersionCheck(VersionCheckRequest) returns (VersionCheckResponse) {}
   rpc ZeekSyntaxCheck(ZeekSyntaxCheckRequest) returns (ZeekSyntaxCheckResponse) {}
   rpc ListScripts(ListScriptsRequest) returns (ListScriptsResponse) {}
   rpc GetScript(GetScriptRequest) returns (ScriptInfo) {}
   rpc ReloadScripts(ReloadScriptsRequest) returns (ReloadScriptsResponse) {}
+  rpc ApplyBehaviorPolicy(ApplyBehaviorPolicyRequest) returns (ApplyBehaviorPolicyResponse) {}
   rpc GetTaskHits(GetTaskHitsRequest) returns (GetTaskHitsResponse) {}
 }

@@ -14,13 +14,13 @@
 
 # 构建 Ubuntu 24.04 x86_64 (linux/amd64) 镜像
 ./build.sh --ubuntu
-# 默认版本为 5.0，导出的 tar 加载后镜像 tag 为 zeek_runner:5.0
+# 默认版本为 5.1，导出的 tar 加载后镜像 tag 为 zeek_runner:5.1
 
 # 构建 Ubuntu 24.04 ARM64 (linux/arm64) 镜像
 ./build.sh --ubuntu-arm64
 
 # 指定版本号
-./build.sh --ubuntu --version 5.0
+./build.sh --ubuntu --version 5.1
 
 # 指定国内 apt 仓库
 ./build.sh --ubuntu --apt-mirror http://mirrors.aliyun.com
@@ -39,23 +39,23 @@
 
 ```shell
 # 基础镜像
-docker pull golang:1.26.4-alpine --platform linux/amd64
+docker pull golang:1.26.5-alpine --platform linux/amd64
 docker pull zeek/zeek:8.0.8 --platform linux/amd64
 
 docker pull redis:8-alpine --platform linux/amd64
 docker pull nginx:1.28-alpine --platform linux/amd64
 docker pull jaegertracing/jaeger:2.17.0 --platform linux/amd64
 
-docker build -t zeek_runner:5.0 . --platform linux/amd64
+docker build -t zeek_runner:5.1 . --platform linux/amd64
 # 指定国内仓库
-docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:5.0 . --platform linux/amd64
+docker build --build-arg APT_MIRROR=http://mirrors.aliyun.com -t zeek_runner:5.1 . --platform linux/amd64
 # 容器导出
-docker save zeek_runner:5.0 | gzip > zeek_runner-5.0-amd64.tar.gz
+docker save zeek_runner:5.1 | gzip > zeek_runner-5.1-amd64.tar.gz
 docker save redis:8-alpine | gzip > redis.tar.gz
 docker save nginx:1.28-alpine | gzip > nginx.tar.gz
 docker save jaegertracing/jaeger:2.17.0 | gzip > jaeger.tar.gz
 
-docker load -i zeek_runner-5.0-amd64.tar.gz
+docker load -i zeek_runner-5.1-amd64.tar.gz
 docker load -i redis.tar.gz
 docker load -i nginx.tar.gz
 docker load -i jaeger.tar.gz
@@ -69,17 +69,17 @@ docker load -i jaeger.tar.gz
 # 1. 在有网环境构建并导出镜像
 chmod +x build.sh
 ./build.sh --ubuntu              # 构建 linux/amd64 镜像并导出 tar.gz
-./build.sh --ubuntu --version 5.0  # 指定版本号
+./build.sh --ubuntu --version 5.1  # 指定版本号
 
 # 构建产物示例：
-# zeek_runner-5.0-amd64.tar.gz   # 加载后镜像 tag 为 zeek_runner:5.0
+# zeek_runner-5.1-amd64.tar.gz   # 加载后镜像 tag 为 zeek_runner:5.1
 
 # 2. 传输到目标服务器
-scp zeek_runner-5.0-amd64.tar.gz user@server:/data/zeek_runner/
+scp zeek_runner-5.1-amd64.tar.gz user@server:/data/zeek_runner/
 
 # 3. 在目标服务器加载镜像
-docker load -i zeek_runner-5.0-amd64.tar.gz
-# 加载后使用 zeek_runner:5.0 启动，架构信息只保留在 tar 文件名中
+docker load -i zeek_runner-5.1-amd64.tar.gz
+# 加载后使用 zeek_runner:5.1 启动，架构信息只保留在 tar 文件名中
 
 # 4. 编辑配置文件（设置 Redis 密码、Kafka 地址等）
 sudo vi /data/zeek_runner/config.yaml
@@ -104,7 +104,9 @@ docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/rules:/opt/zeek_runner/rules:ro \
+  -v /data/zeek_runner/archive:/opt/zeek_runner/archive \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
@@ -112,7 +114,7 @@ docker run -d \
   --log-driver json-file \
   --log-opt max-size=100m \
   --log-opt max-file=3 \
-  zeek_runner:5.0
+  zeek_runner:5.1
 
 # 使用环境变量启动（不推荐，建议使用配置文件）
 docker run -d \
@@ -121,11 +123,14 @@ docker run -d \
   -p 50051:50051 \
   -e KAFKA_BROKERS="192.168.2.6:9092" \
   -e AUTH_TOKENS="token1,token2" \
+  -e BEHAVIOR_RULES_PATH=/opt/zeek_runner/rules/behavior_runtime.example.yaml \
+  -v /data/zeek_runner/rules:/opt/zeek_runner/rules:ro \
+  -v /data/zeek_runner/archive:/opt/zeek_runner/archive \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
   -v /data/zeek_runner/custom/config.zeek:/usr/local/zeek/share/zeek/base/custom/config.zeek:ro \
-  zeek_runner:5.0
+  zeek_runner:5.1
 ```
 
 #### 日志配置
@@ -240,6 +245,11 @@ docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 | `GRPC_ENABLE_HEALTH_CHECK` | `true` | 启用 gRPC 健康检查 |
 | `AUTH_TOKENS`           | -    | 认证 Token 列表（逗号分隔），为空则不启用认证 |
 | `CONFIG_FILE`           | -    | 配置文件路径（优先级高于环境变量） |
+| `BEHAVIOR_RULES_PATH`   | -    | 行为识别规则 YAML 路径 |
+| `BEHAVIOR_ARCHIVE_ENABLED` | false | 是否启用命中载荷加密归档 |
+| `BEHAVIOR_ARCHIVE_DIR`  | `/opt/zeek_runner/archive` | 归档存储目录 |
+| `BEHAVIOR_ARCHIVE_KEY_HEX` | -    | AES-256 密钥（64 位十六进制字符串），启用归档时必需 |
+| `BEHAVIOR_ARCHIVE_RETENTION_DAYS` | 30   | 归档保留天数 |
 
 ### 配置文件
 
@@ -288,6 +298,13 @@ grpc:
 file:
    extractPath: "/data/zeek_runner/extracted"
    minSizeKB: 20
+
+behavior:
+   rulesPath: "/opt/zeek_runner/rules/behavior_runtime.example.yaml"
+   archiveEnabled: true
+   archiveDir: "/opt/zeek_runner/archive"
+   archiveKeyHex: "319aeb9e2163d8a97f06f761e3328c384f39e86a6d3c290113519a71578ac263"
+   archiveRetention: 30
 ```
 
 #### 配置参数说明
@@ -330,6 +347,42 @@ file:
 | `GRPC_ENABLE_REFLECTION` | `grpc.enableReflection` | gRPC 反射服务开关 |
 | `GRPC_ENABLE_HEALTH_CHECK` | `grpc.enableHealthCheck` | gRPC 健康检查开关 |
 
+##### 行为识别配置
+
+行为识别引擎使用本仓库内置的 `internal/upgradebehavior` 包加载本地规则 YAML，在 zeek_runner 侧完成 HTTP 原始流识别与命中载荷归档。Kafka 仅传输识别结果，不发送原始正文。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `rulesPath` | string | - | 行为识别规则 YAML 路径；为空则不启动行为引擎 |
+| `archiveEnabled` | bool | `false` | 是否启用命中载荷加密归档 |
+| `archiveDir` | string | `/opt/zeek_runner/archive` | 归档存储目录 |
+| `archiveKeyHex` | string | - | AES-256 密钥（64 位十六进制），启用归档时必需 |
+| `archiveRetention` | int | `30` | 归档保留天数，过期对象定期清理 |
+
+**启动检查**：规则加载失败（文件不存在、YAML 格式错误、规则集为空）会直接拒绝启动，不会以空规则集静默运行。
+
+**归档安全**：加密密钥不可用时 `archiveStatus=failed`，不会降级为明文存储。归档引用 ID 由 `pcap_id|uid|tx_seq|payload_sha256|ruleID` 派生，同一事务重放不会产生重复归档。
+
+**Docker 挂载**：规则文件和归档目录需挂载到容器内：
+
+```shell
+docker run -d \
+  --name zeek_runner \
+  -p 8000:8000 \
+  -p 50051:50051 \
+  -v /data/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/rules:/opt/zeek_runner/rules:ro \
+  -v /data/zeek_runner/archive:/opt/zeek_runner/archive \
+  -v /data/zeek_runner/scripts:/opt/zeek_runner/scripts:ro \
+  -v /data/zeek_runner/pcaps:/opt/zeek_runner/pcaps \
+  -v /data/zeek_runner/extracted:/opt/zeek_runner/extracted \
+  zeek_runner:5.1
+```
+
+开源版提供 `rules/behavior_runtime.example.yaml` 作为通用示例规则。生产部署可以直接挂载自定义后的同格式 YAML；runner 只读取该文件，不依赖外部仓库或 vendor 目录。发布后可通过 runner `GET /healthz` 中的 `ruleset_sha256` 校验当前加载的规则版本。
+
+`/scripts/reload` 仅重载 Zeek 脚本，不重载行为规则。更新运行时规则文件需要重启 runner。
+
 #### 使用配置文件
 
 ```shell
@@ -338,12 +391,14 @@ docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -e CONFIG_FILE="/data/zeek_runner/config.yaml" \
-  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -e CONFIG_FILE="/opt/zeek_runner/config.yaml" \
+  -v /data/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/rules:/opt/zeek_runner/rules:ro \
+  -v /data/zeek_runner/archive:/opt/zeek_runner/archive \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:5.0
+  zeek_runner:5.1
 
 # 方式二：使用默认路径（自动检测）
 # 服务会按顺序检测以下路径：
@@ -355,11 +410,13 @@ docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/rules:/opt/zeek_runner/rules:ro \
+  -v /data/zeek_runner/archive:/opt/zeek_runner/archive \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:5.0
+  zeek_runner:5.1
 ```
 
 #### 配置优先级
@@ -372,6 +429,7 @@ docker run -d \
 
 - **Redis 密码**：使用配置文件而非环境变量，避免密码泄露
 - **密码一致性**：确保 `config.yaml` 和 `docker-compose.yml` 中的 Redis 密码一致
+- **归档密钥**：`behavior.archiveKeyHex` 是 AES-256 加密密钥，生产环境务必更换并通过 Docker Secrets 或 Kubernetes Secrets 注入，不要提交到代码仓库
 - **配置文件权限**：设置 `chmod 600 config.yaml` 限制访问
 - **Docker Secrets**：生产环境建议使用 Docker Secrets 或 Kubernetes Secrets
 
@@ -482,12 +540,14 @@ docker run -d \
   --name zeek_runner \
   -p 8000:8000 \
   -p 50051:50051 \
-  -v /data/zeek_runner/config.yaml:/data/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/config.yaml:/opt/zeek_runner/config.yaml:ro \
+  -v /data/zeek_runner/rules:/opt/zeek_runner/rules:ro \
+  -v /data/zeek_runner/archive:/opt/zeek_runner/archive \
   -v /data/zeek_runner/scripts:/data/zeek_runner/scripts:ro \
   -v /data/zeek_runner/file_extract_script:/data/zeek_runner/file_extract_script:ro \
   -v /data/zeek_runner/pcaps:/data/zeek_runner/pcaps \
   -v /data/zeek_runner/extracted:/data/zeek_runner/extracted \
-  zeek_runner:5.0
+  zeek_runner:5.1
 ```
 
 ### 分布式部署
@@ -624,7 +684,7 @@ zeek:file:path:{filePath} → hash
 {
    "ts": 1712138400.0,
    "id": {
-      "orig_h": "192.168.1.100",
+      "orig_h": "192.168.12.2380",
       "resp_h": "10.0.0.1"
    },
    "fuid": "Fabc123",

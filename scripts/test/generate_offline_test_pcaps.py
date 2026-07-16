@@ -80,15 +80,25 @@ def http_exchange(src, dst, sport, request, response, ident):
 
 def http_req(method, uri, headers=None, body=b""):
     headers = headers or {}
-    base = f"{method} {uri} HTTP/1.1\r\nHost: target.local\r\n".encode()
+    host = headers.pop("Host", "target.local")
+    base = f"{method} {uri} HTTP/1.1\r\nHost: {host}\r\n".encode()
     if body and "Content-Length" not in headers:
         headers["Content-Length"] = str(len(body))
     return base + b"".join(f"{k}: {v}\r\n".encode() for k, v in headers.items()) + b"\r\n" + body
 
 
 def http_resp(content_type="text/plain", body=b"OK", code=200):
-    reason = {200: "OK", 401: "Unauthorized", 403: "Forbidden"}.get(code, "OK")
+    reason = {200: "OK", 301: "Moved Permanently", 302: "Found", 401: "Unauthorized", 403: "Forbidden"}.get(code, "OK")
     return f"HTTP/1.1 {code} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {len(body)}\r\n\r\n".encode() + body
+
+
+def http_resp_headers(headers=None, body=b"", code=200, reason=None):
+    headers = headers or {}
+    if reason is None:
+        reason = {200: "OK", 301: "Moved Permanently", 302: "Found", 401: "Unauthorized", 403: "Forbidden"}.get(code, "OK")
+    if "Content-Length" not in headers:
+        headers["Content-Length"] = str(len(body))
+    return f"HTTP/1.1 {code} {reason}\r\n".encode() + b"".join(f"{k}: {v}\r\n".encode() for k, v in headers.items()) + b"\r\n" + body
 
 
 def gen_syn_flood():
@@ -193,12 +203,84 @@ def gen_file_extract():
     write_pcap("file_extract_test.pcap", http_exchange("192.168.56.10", "192.168.56.20", 35000, http_req("GET", "/downloads/firmware.bin"), http_resp("application/octet-stream", body), 700))
 
 
+def gen_firmware_download_hijack():
+    packets = []
+    good_body = b"FWUP" + b"A" * 4096
+    replaced_body = b"FWUP" + b"B" * 8192
+    packets += http_exchange(
+        "192.168.65.10",
+        "192.168.65.20",
+        44000,
+        http_req("GET", "/firmware/router_v3.2.1.bin", {"Host": "updates.vendor.local"}),
+        http_resp("application/octet-stream", good_body),
+        7100,
+    )
+    packets += http_exchange(
+        "192.168.65.10",
+        "192.168.65.20",
+        44001,
+        http_req("GET", "/firmware/router_v3.2.1.bin", {"Host": "updates.vendor.local"}),
+        http_resp("application/octet-stream", replaced_body),
+        7200,
+    )
+    packets += http_exchange(
+        "192.168.65.10",
+        "203.0.113.66",
+        44002,
+        http_req("GET", "/firmware/router_v3.2.1.bin", {"Host": "bad-update.local"}),
+        http_resp("application/octet-stream", replaced_body),
+        7300,
+    )
+    packets += http_exchange(
+        "192.168.65.10",
+        "192.168.65.20",
+        44003,
+        http_req("GET", "/firmware/router_v3.2.1.bin", {"Host": "updates.vendor.local"}),
+        http_resp_headers({"Location": "http://bad-update.local/firmware/router_v3.2.1.bin", "Content-Type": "text/plain"}, code=302),
+        7400,
+    )
+    write_pcap("firmware_download_hijack_test.pcap", packets)
+
+
+def gen_firmware_upgrade_hijack():
+    packets = []
+    manifest_v3 = b'{"version":"3.2.1","url":"https://updates.vendor.local/firmware/router_v3.2.1.bin","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","signature":"valid"}'
+    manifest_bad = b'{"version":"1.0.0","url":"http://bad-update.local/firmware/router_v1.0.0.bin"}'
+    upload_body = b"FWUP" + b"C" * 4096
+    packets += http_exchange(
+        "192.168.66.10",
+        "192.168.66.20",
+        45000,
+        http_req("GET", "/api/update/check", {"Host": "updates.vendor.local"}),
+        http_resp("application/json", manifest_v3),
+        8100,
+    )
+    packets += http_exchange(
+        "192.168.66.10",
+        "192.168.66.20",
+        45001,
+        http_req("GET", "/api/update/check", {"Host": "updates.vendor.local"}),
+        http_resp("application/json", manifest_bad),
+        8200,
+    )
+    packets += http_exchange(
+        "192.168.66.30",
+        "192.168.66.20",
+        45002,
+        http_req("POST", "/cgi-bin/upgrade", {"Host": "router-admin.local", "Content-Type": "application/octet-stream"}, upload_body),
+        http_resp(body=b"accepted"),
+        8300,
+    )
+    write_pcap("firmware_upgrade_hijack_test.pcap", packets)
+
+
 def main():
     for fn in [
         gen_anomalous_traffic, gen_bulk_download, gen_dns_flood, gen_file_tampering,
         gen_http_bruteforce, gen_http_cmd_injection, gen_http_flood, gen_http_suspicious_ua,
         gen_http_webshell, gen_intel_hit, gen_slammer_worm, gen_sqli_webshell,
         gen_ssh_file_transfer, gen_syn_flood, gen_file_extract,
+        gen_firmware_download_hijack, gen_firmware_upgrade_hijack,
     ]:
         fn()
 

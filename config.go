@@ -31,8 +31,8 @@ type KafkaConfig struct {
 	SaslMechanism string `yaml:"saslMechanism"` // SASL 认证机制，如 PLAIN；为空则不启用认证
 	SaslUsername  string `yaml:"saslUsername"`  // SASL 认证用户名
 	SaslPassword  string `yaml:"saslPassword"`  // SASL 认证密码
-	Brokers string `yaml:"brokers"`
-	Topic   string `yaml:"topic"`
+	Brokers       string `yaml:"brokers"`
+	Topic         string `yaml:"topic"`
 }
 
 type PoolConfig struct {
@@ -84,6 +84,16 @@ type OTelConfig struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
+// BehaviorConfig 行为识别引擎配置。
+type BehaviorConfig struct {
+	RulesPath        string `yaml:"rulesPath"`        // behavior_runtime.yaml 的绝对路径
+	Required         bool   `yaml:"required"`         // 生产环境必须为 true；缺失/无效规则拒绝就绪
+	ArchiveEnabled   bool   `yaml:"archiveEnabled"`   // 是否启用命中载荷归档
+	ArchiveDir       string `yaml:"archiveDir"`       // 归档目录
+	ArchiveKeyHex    string `yaml:"archiveKeyHex"`    // AES-256 密钥的十六进制字符串
+	ArchiveRetention int    `yaml:"archiveRetention"` // 归档保留天数（默认 30）
+}
+
 type ZeekConfig struct {
 	BaseWaitTimeMs       int    `yaml:"baseWaitTimeMs"`
 	ExtractPath          string `yaml:"extractPath"`
@@ -107,6 +117,7 @@ type Config struct {
 	GRPC      GRPCConfig      `yaml:"grpc"`
 	Zeek      ZeekConfig      `yaml:"zeek"`
 	OTel      OTelConfig      `yaml:"otel"`
+	Behavior  BehaviorConfig  `yaml:"behavior"`
 }
 
 type ConfigManager struct {
@@ -187,9 +198,9 @@ func loadConfig() *Config {
 			TimeoutMinutes: getEnvInt("ZEEK_TIMEOUT_MINUTES", 5),
 		},
 		Scheduler: SchedulerConfig{
-			WeightedCapacity:      getEnvInt("ZEEK_WEIGHTED_CAPACITY", getEnvInt("ZEEK_CONCURRENT_TASKS", 8)),
+			WeightedCapacity:      getEnvInt("ZEEK_WEIGHTED_CAPACITY", getEnvInt("ZEEK_CONCURRENT_TASKS", 16)),
 			MaxClaimBatch:         getEnvInt("ZEEK_MAX_CLAIM_BATCH", 1),
-			LeaseTimeout:          getEnvString("ZEEK_LEASE_TIMEOUT", "10m"),
+			LeaseTimeout:          getEnvString("ZEEK_LEASE_TIMEOUT", "2m"),
 			KafkaLagHighWatermark: int64(getEnvInt("ZEEK_KAFKA_LAG_HIGH_WATERMARK", 0)),
 			MinFreeDiskPercent:    getEnvInt("ZEEK_MIN_FREE_DISK_PERCENT", 5),
 		},
@@ -232,6 +243,14 @@ func loadConfig() *Config {
 			AutoReloadScripts:    getEnvBool("ZEEK_AUTO_RELOAD_SCRIPTS", true),
 			ScriptReloadDebounce: getEnvString("ZEEK_SCRIPT_RELOAD_DEBOUNCE", "2s"),
 			ScriptReloadInterval: getEnvString("ZEEK_SCRIPT_RELOAD_INTERVAL", "60s"),
+		},
+		Behavior: BehaviorConfig{
+			RulesPath:        getEnvString("BEHAVIOR_RULES_PATH", ""),
+			Required:         getEnvBool("BEHAVIOR_REQUIRED", true),
+			ArchiveEnabled:   getEnvBool("BEHAVIOR_ARCHIVE_ENABLED", false),
+			ArchiveDir:       getEnvString("BEHAVIOR_ARCHIVE_DIR", "/opt/zeek_runner/archive"),
+			ArchiveKeyHex:    os.Getenv("BEHAVIOR_ARCHIVE_KEY_HEX"),
+			ArchiveRetention: getEnvInt("BEHAVIOR_ARCHIVE_RETENTION_DAYS", 30),
 		},
 	}
 

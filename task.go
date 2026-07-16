@@ -187,7 +187,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req AnalyzeReq) (*Task, e
 
 	tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusPending, "")
 
-	slog.Info("task created", "taskID", task.TaskID, "uuid", task.UUID)
+	slog.Debug("task created", "taskID", task.TaskID, "uuid", task.UUID)
 	return task, nil
 }
 
@@ -255,7 +255,7 @@ func (tm *TaskManager) CreateExtractTask(ctx context.Context, req ExtractReq) (*
 
 	tm.updateParentTaskStatus(ctx, task.TaskID, TaskStatusPending, "")
 
-	slog.Info("extract task created", "taskID", task.TaskID, "uuid", task.UUID)
+	slog.Debug("extract task created", "taskID", task.TaskID, "uuid", task.UUID)
 	return task, nil
 }
 
@@ -417,49 +417,76 @@ return results
 
 func (tm *TaskManager) updateParentTaskStatus(ctx context.Context, taskID string, newStatus TaskStatus, oldStatus TaskStatus) {
 	key := tm.parentKey(taskID)
+	const updateParentStatusScript = `
+local parentRaw = redis.call("GET", KEYS[1])
+local parent
+if parentRaw then
+  parent = cjson.decode(parentRaw)
+else
+  parent = {TaskID = ARGV[1], TotalCount = 0, PendingCount = 0, RunningCount = 0, SuccessCount = 0, FailedCount = 0, TimeoutCount = 0, Status = "pending"}
+end
 
-	data, err := tm.redis.Get(ctx, key).Bytes()
-	var status ParentTaskStatus
-	if err == nil {
-		json.Unmarshal(data, &status)
-	} else {
-		status = ParentTaskStatus{TaskID: taskID}
+local oldStatus = ARGV[2]
+local newStatus = ARGV[3]
+local terminalTTLMillis = tonumber(ARGV[4])
+
+local function dec(field)
+  parent[field] = math.max((parent[field] or 0) - 1, 0)
+end
+
+local function inc(field)
+  parent[field] = (parent[field] or 0) + 1
+end
+
+if oldStatus ~= "" then
+  if oldStatus == "pending" then
+    dec("PendingCount")
+  elseif oldStatus == "running" then
+    dec("RunningCount")
+  elseif oldStatus == "success" then
+    dec("SuccessCount")
+  elseif oldStatus == "failed" or oldStatus == "canceled" then
+    dec("FailedCount")
+  elseif oldStatus == "timeout" then
+    dec("TimeoutCount")
+  end
+else
+  inc("TotalCount")
+end
+
+if newStatus == "pending" then
+  inc("PendingCount")
+elseif newStatus == "running" then
+  inc("RunningCount")
+elseif newStatus == "success" then
+  inc("SuccessCount")
+elseif newStatus == "failed" or newStatus == "canceled" then
+  inc("FailedCount")
+elseif newStatus == "timeout" then
+  inc("TimeoutCount")
+end
+
+if (parent.TotalCount or 0) == 0 then
+  parent.Status = "pending"
+elseif (parent.PendingCount or 0) > 0 or (parent.RunningCount or 0) > 0 then
+  parent.Status = "running"
+elseif (parent.FailedCount or 0) == (parent.TotalCount or 0) then
+  parent.Status = "failed"
+elseif (parent.FailedCount or 0) > 0 or (parent.TimeoutCount or 0) > 0 then
+  parent.Status = "partial_failed"
+else
+  parent.Status = "completed"
+end
+
+redis.call("SET", KEYS[1], cjson.encode(parent))
+if parent.Status ~= "running" and parent.Status ~= "pending" and terminalTTLMillis > 0 then
+  redis.call("PEXPIRE", KEYS[1], terminalTTLMillis)
+end
+return parent.Status
+`
+	if err := tm.redis.Eval(ctx, updateParentStatusScript, []string{key}, taskID, string(oldStatus), string(newStatus), tm.expiration.Milliseconds()).Err(); err != nil {
+		slog.Warn("update parent task status failed", "taskID", taskID, "oldStatus", oldStatus, "newStatus", newStatus, "err", err)
 	}
-
-	if oldStatus != "" {
-		switch oldStatus {
-		case TaskStatusPending:
-			status.PendingCount--
-		case TaskStatusRunning:
-			status.RunningCount--
-		case TaskStatusSuccess:
-			status.SuccessCount--
-		case TaskStatusFailed:
-			status.FailedCount--
-		case TaskStatusTimeout:
-			status.TimeoutCount--
-		}
-	} else {
-		status.TotalCount++
-	}
-
-	switch newStatus {
-	case TaskStatusPending:
-		status.PendingCount++
-	case TaskStatusRunning:
-		status.RunningCount++
-	case TaskStatusSuccess:
-		status.SuccessCount++
-	case TaskStatusFailed:
-		status.FailedCount++
-	case TaskStatusTimeout:
-		status.TimeoutCount++
-	}
-
-	status.Status = tm.deriveParentStatus(&status)
-
-	data, _ = json.Marshal(status)
-	tm.redis.Set(ctx, key, data, tm.parentStatusExpiration(status.Status))
 }
 
 func (tm *TaskManager) deriveParentStatus(s *ParentTaskStatus) string {
@@ -799,6 +826,29 @@ func (tm *TaskManager) GetQueueLength(ctx context.Context) (int64, error) {
 	return tm.redis.XLen(ctx, tm.streamKey).Result()
 }
 
+// GetPendingQueueLength 返回 Redis Stream 中“未领取的真实等待量” = XLEN - XPENDING。
+// 已领取但仍在执行中的 PEL 消息不计入等待队列，避免下游把执行中的任务重复计入背压。
+// 当 XPENDING 不可用（如 consumer group 尚未创建）时退化为 XLEN，保守高估等待量。
+// 当 tm 或 tm.redis 为 nil（如测试桩）时返回 0，避免空指针；生产环境 redis 始终非 nil。
+func (tm *TaskManager) GetPendingQueueLength(ctx context.Context) (int64, error) {
+	if tm == nil || tm.redis == nil {
+		return 0, nil
+	}
+	total, err := tm.redis.XLen(ctx, tm.streamKey).Result()
+	if err != nil {
+		return 0, err
+	}
+	pending, err := tm.redis.XPending(ctx, tm.streamKey, tm.consumerGroup).Result()
+	if err != nil {
+		return total, nil
+	}
+	claimed := pending.Count
+	if claimed >= total {
+		return 0, nil
+	}
+	return total - claimed, nil
+}
+
 func (tm *TaskManager) DequeueBatchJob(ctx context.Context, timeout time.Duration, minIdle time.Duration) (*BatchQueueJob, error) {
 	tm.ensureConsumerGroup(ctx)
 	claimed, _, err := tm.redis.XAutoClaim(ctx, &redis.XAutoClaimArgs{
@@ -858,6 +908,20 @@ func (tm *TaskManager) AckBatchJob(ctx context.Context, job *BatchQueueJob) erro
 		return err
 	}
 	return tm.redis.XDel(ctx, tm.streamKey, job.StreamID).Err()
+}
+
+// RequeueBatchJob 将 job 重新放回 Stream 尾部并清理原始 PEL entry。
+// 用于 capacity 不足时避免 job 卡在 PEL 等待 leaseTimeout，而是立即回到队列尾部等待下次消费。
+func (tm *TaskManager) RequeueBatchJob(ctx context.Context, job *BatchQueueJob) error {
+	if job == nil {
+		return nil
+	}
+	original := *job
+	job.StreamID = ""
+	if err := tm.EnqueueBatchJob(ctx, *job); err != nil {
+		return err
+	}
+	return tm.AckBatchJob(ctx, &original)
 }
 
 func (tm *TaskManager) AssignTask(ctx context.Context, uuid string) error {

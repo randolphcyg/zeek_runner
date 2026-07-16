@@ -16,17 +16,17 @@ import (
 )
 
 type FileRecord struct {
-	Hash      string    `json:"hash"`
-	FilePath  string    `json:"filePath"`
-	FileName  string    `json:"fileName"`
-	FUID      string    `json:"fuid"`
-	OriginalFileName string `json:"originalFileName"`
-	FileSize  int64     `json:"fileSize"`
-	MimeType  string    `json:"mimeType"`
-	FirstSeen time.Time `json:"firstSeen"`
-	RefCount  int       `json:"refCount"`
-	SourceURL string    `json:"sourceUrl"`
-	TaskID    string    `json:"taskID"`
+	Hash             string    `json:"hash"`
+	FilePath         string    `json:"filePath"`
+	FileName         string    `json:"fileName"`
+	FUID             string    `json:"fuid"`
+	OriginalFileName string    `json:"originalFileName"`
+	FileSize         int64     `json:"fileSize"`
+	MimeType         string    `json:"mimeType"`
+	FirstSeen        time.Time `json:"firstSeen"`
+	RefCount         int       `json:"refCount"`
+	SourceURL        string    `json:"sourceUrl"`
+	TaskID           string    `json:"taskID"`
 }
 
 type FileDedupManager struct {
@@ -159,7 +159,7 @@ func (fdm *FileDedupManager) RegisterFileInTask(ctx context.Context, record *Fil
 		return fmt.Errorf("failed to register file: %w", err)
 	}
 
-	slog.Info("file registered in task", "hash", record.Hash[:16], "path", record.FilePath, "taskID", record.TaskID)
+	slog.Debug("file registered in task", "hash", record.Hash[:16], "path", record.FilePath, "taskID", record.TaskID)
 	return nil
 }
 
@@ -176,7 +176,7 @@ func (fdm *FileDedupManager) ProcessExtractedFile(ctx context.Context, filePath,
 	}
 
 	if isDuplicate {
-		slog.Info("duplicate file in task detected",
+		slog.Debug("duplicate file in task detected",
 			"hash", hash[:16],
 			"newPath", filePath,
 			"existingPath", existingRecord.FilePath,
